@@ -8,9 +8,9 @@ import sys
 
 from traceback import format_exc
 
-from PySide6.QtCore import Qt, QBuffer, QByteArray, QObject, QIODevice, QTimer, qCritical, qInfo, qWarning
-from PySide6.QtMultimedia import QAudioFormat, QMediaDevices, QAudioSink, QAudioSource
-from PySide6.QtWidgets import QApplication, QMainWindow, QSystemTrayIcon
+from PySide6.QtCore import Qt, QByteArray, QCommandLineOption, QCommandLineParser, QObject, QIODevice, QTimer, qCritical, qInfo, qWarning
+from PySide6.QtMultimedia import QAudioFormat, QAudioSink, QAudioSource, QMediaDevices
+from PySide6.QtWidgets import QApplication, QMainWindow, QSystemTrayIcon, QVBoxLayout, QWidget, QLabel
 
 from voiceconversion.common.deviceManager.DeviceManager import DeviceManager
 from voiceconversion.ModelSlotManager import ModelSlotManager
@@ -26,6 +26,8 @@ from exceptions import (
     VoiceChangerIsNotSelectedException,
 )
 
+from windowarea import WindowAreaWidget
+
 
 stream_handler = logging.StreamHandler()
 stream_handler.setLevel(logging.INFO)
@@ -38,6 +40,11 @@ logging.basicConfig(
 
 
 class MainWindow(QMainWindow):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.setCentralWidget(WindowAreaWidget())
+
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:
             self.close()  # closes the window (and quits the app if it's the last window)
@@ -193,6 +200,18 @@ class VoiceChangerManager(QObject):
 def main():
     app = QApplication(sys.argv)
 
+    clParser = QCommandLineParser()
+    clParser.addHelpOption()
+    clParser.addVersionOption()
+
+    noModelLoadOption = QCommandLineOption(
+        ["no-model-load"],
+        "Don't load a voice model."
+    )
+    clParser.addOption(noModelLoadOption)
+
+    clParser.process(app)
+
     # Let Ctrl+C in terminal close the application.
     signal.signal(signal.SIGINT, lambda *args: QApplication.quit())
     timer = QTimer()
@@ -202,10 +221,10 @@ def main():
     window = MainWindow()
     window.setWindowTitle("A-Voc")
 
-    # audio = Audio()
+    if not clParser.isSet(noModelLoadOption):
+        VoiceChangerManager(window)
 
-    vcm = VoiceChangerManager(window)
-
+    window.resize(1980, 1080)
     window.show()
 
     sys.exit(app.exec())
