@@ -1,0 +1,21 @@
+__pycache__
+
+# pyenv
+.python-version
+
+.venv
+
+/build
+*egg-info/
+
+.vscode
+
+# Static data in the legacy voicechanger.
+pretrain/
+
+# User data in the legacy voicechanger.
+model_dir/
+stored_setting.json
+
+# Runtime data in the legacy voicechanger.
+tmp_dir/

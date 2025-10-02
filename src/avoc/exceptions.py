@@ -1,0 +1,8 @@
+class VoiceChangerIsNotSelectedException(Exception):
+    def __str__(self):
+        return repr("Voice Changer is not selected.")
+
+
+class PipelineNotInitializedException(Exception):
+    def __str__(self):
+        return repr("Pipeline is not initialized.")
