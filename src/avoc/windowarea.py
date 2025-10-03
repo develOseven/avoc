@@ -7,7 +7,6 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QDragMoveEvent, QDropEvent, QFontMetrics, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QComboBox,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -20,6 +19,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from .audiosettings import AudioSettingsGroupBox
 
 VOICE_CARD_SIZE = QSize(188, 262)
 VOICE_CARD_MARGIN = 8
@@ -42,22 +43,8 @@ class WindowAreaWidget(QWidget):
 
         controlsLayout = QHBoxLayout()
 
-        audioSettingsGroupBox = QGroupBox("Audio Settings")
-        audioSettingsLayout = QGridLayout()
-        row = 0
-        sampleRateComboBox = QComboBox()
-        audioSettingsLayout.addWidget(QLabel("Sample Rate"), row, 0)
-        audioSettingsLayout.addWidget(sampleRateComboBox, row, 1)
-        row += 1
-        audioInputComboBox = QComboBox()
-        audioSettingsLayout.addWidget(QLabel("Audio Input"), row, 0)
-        audioSettingsLayout.addWidget(audioInputComboBox, row, 1)
-        row += 1
-        audioOutputComboBox = QComboBox()
-        audioSettingsLayout.addWidget(QLabel("Audio Output"), row, 0)
-        audioSettingsLayout.addWidget(audioOutputComboBox, row, 1)
-        audioSettingsGroupBox.setLayout(audioSettingsLayout)
-        controlsLayout.addWidget(audioSettingsGroupBox)
+        audioSettingsGroupBox = AudioSettingsGroupBox()
+        controlsLayout.addWidget(audioSettingsGroupBox, stretch=3)
 
         modelSettingsGroupBox = QGroupBox("Settings for the Active Voice Model")
         modelSettingsLayout = QGridLayout()
@@ -74,30 +61,36 @@ class WindowAreaWidget(QWidget):
         modelSettingsLayout.addWidget(QLabel("Index"), row, 0)
         modelSettingsLayout.addWidget(indexSlider, row, 1)
         modelSettingsGroupBox.setLayout(modelSettingsLayout)
-        controlsLayout.addWidget(modelSettingsGroupBox)
+        controlsLayout.addWidget(modelSettingsGroupBox, stretch=1)
 
-        startButton = QPushButton(START_TXT)
+        self.startButton = QPushButton(START_TXT)
         # Make the Start button size fixed.
-        fm = QFontMetrics(startButton.font())
+        fm = QFontMetrics(self.startButton.font())
         maxStartButtonWidth = int(
             max(fm.horizontalAdvance(t) for t in [START_TXT, RUNNING_TXT]) * 1.618
         )
-        startButton.setMinimumWidth(maxStartButtonWidth)
+        self.startButton.setMinimumWidth(maxStartButtonWidth)
         # Make the Start button toggle and change text when clicked.
-        startButton.setCheckable(True)
-        startButton.toggled.connect(
-            lambda checked: startButton.setText(RUNNING_TXT if checked else START_TXT)
+        self.startButton.setCheckable(True)
+        self.startButton.toggled.connect(
+            lambda checked: self.startButton.setText(
+                RUNNING_TXT if checked else START_TXT
+            )
         )
         # Unfortunately can't drag the cards while the voice conversion is running because
         # it will select them and load.
-        startButton.toggled.connect(
+        self.startButton.toggled.connect(
             lambda checked: self.voiceCards.setDragDropMode(
                 QAbstractItemView.DragDropMode.DropOnly
                 if checked
                 else QAbstractItemView.DragDropMode.InternalMove
             )
         )
-        controlsLayout.addWidget(startButton)
+        # Can't change audio settings while running.
+        self.startButton.toggled.connect(
+            lambda checked: audioSettingsGroupBox.setEnabled(not checked)
+        )
+        controlsLayout.addWidget(self.startButton)
 
         layout.addLayout(controlsLayout, stretch=1)
 
