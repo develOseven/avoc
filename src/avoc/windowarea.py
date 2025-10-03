@@ -1,18 +1,33 @@
-import os
 import json
+import os
 import re
-
 from typing import Iterable, List
 
-from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QDragMoveEvent, QDropEvent, QPalette, QPixmap
-from PySide6.QtWidgets import QAbstractItemView, QLabel, QListView, QListWidget, QListWidgetItem, QVBoxLayout, QWidget
-
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QDragMoveEvent, QDropEvent, QFontMetrics, QPalette, QPixmap
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QComboBox,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QListView,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
+)
 
 VOICE_CARD_SIZE = QSize(188, 262)
+VOICE_CARD_MARGIN = 8
 
 DROP_MODEL_FILES = "Drop model files here<br><b>*.pth</b> and <b>*.index</b><br>OR<br><b>*.onnx</b><br><br>"
 DROP_ICON_FILE = "Drop icon file here<br><b>*.png</b>, <b>*.jpeg</b>, <b>*.gif</b>..."
+START_TXT = "Start"
+RUNNING_TXT = "Running..."
 
 
 class WindowAreaWidget(QWidget):
@@ -24,7 +39,68 @@ class WindowAreaWidget(QWidget):
         self.voiceCards = FlowContainerWithFixedLast()
 
         layout.addWidget(self.voiceCards, stretch=2)
-        layout.addWidget(QLabel("I take 1/3 of the window height"), stretch=1)
+
+        controlsLayout = QHBoxLayout()
+
+        audioSettingsGroupBox = QGroupBox("Audio Settings")
+        audioSettingsLayout = QGridLayout()
+        row = 0
+        sampleRateComboBox = QComboBox()
+        audioSettingsLayout.addWidget(QLabel("Sample Rate"), row, 0)
+        audioSettingsLayout.addWidget(sampleRateComboBox, row, 1)
+        row += 1
+        audioInputComboBox = QComboBox()
+        audioSettingsLayout.addWidget(QLabel("Audio Input"), row, 0)
+        audioSettingsLayout.addWidget(audioInputComboBox, row, 1)
+        row += 1
+        audioOutputComboBox = QComboBox()
+        audioSettingsLayout.addWidget(QLabel("Audio Output"), row, 0)
+        audioSettingsLayout.addWidget(audioOutputComboBox, row, 1)
+        audioSettingsGroupBox.setLayout(audioSettingsLayout)
+        controlsLayout.addWidget(audioSettingsGroupBox)
+
+        modelSettingsGroupBox = QGroupBox("Settings for the Active Voice Model")
+        modelSettingsLayout = QGridLayout()
+        row = 0
+        pitchSlider = QSlider(Qt.Orientation.Horizontal)
+        modelSettingsLayout.addWidget(QLabel("Pitch"), row, 0)
+        modelSettingsLayout.addWidget(pitchSlider, row, 1)
+        row += 1
+        formantShiftSlider = QSlider(Qt.Orientation.Horizontal)
+        modelSettingsLayout.addWidget(QLabel("Formant Shift"), row, 0)
+        modelSettingsLayout.addWidget(formantShiftSlider, row, 1)
+        row += 1
+        indexSlider = QSlider(Qt.Orientation.Horizontal)
+        modelSettingsLayout.addWidget(QLabel("Index"), row, 0)
+        modelSettingsLayout.addWidget(indexSlider, row, 1)
+        modelSettingsGroupBox.setLayout(modelSettingsLayout)
+        controlsLayout.addWidget(modelSettingsGroupBox)
+
+        startButton = QPushButton(START_TXT)
+        # Make the Start button size fixed.
+        fm = QFontMetrics(startButton.font())
+        maxStartButtonWidth = int(
+            max(fm.horizontalAdvance(t) for t in [START_TXT, RUNNING_TXT]) * 1.618
+        )
+        startButton.setMinimumWidth(maxStartButtonWidth)
+        # Make the Start button toggle and change text when clicked.
+        startButton.setCheckable(True)
+        startButton.toggled.connect(
+            lambda checked: startButton.setText(RUNNING_TXT if checked else START_TXT)
+        )
+        # Unfortunately can't drag the cards while the voice conversion is running because
+        # it will select them and load.
+        startButton.toggled.connect(
+            lambda checked: self.voiceCards.setDragDropMode(
+                QAbstractItemView.DragDropMode.DropOnly
+                if checked
+                else QAbstractItemView.DragDropMode.InternalMove
+            )
+        )
+        controlsLayout.addWidget(startButton)
+
+        layout.addLayout(controlsLayout, stretch=1)
+
         self.setLayout(layout)
 
         modelDirToModelIcon: dict[str, QWidget] = {}
@@ -41,22 +117,27 @@ class WindowAreaWidget(QWidget):
                         if icon_file_name:
                             pixmap = QPixmap(icon_file_name)
                             label = QLabel(self)
-                            label.setPixmap(cropCenterScalePixmap(pixmap, VOICE_CARD_SIZE))
+                            label.setPixmap(
+                                cropCenterScalePixmap(pixmap, VOICE_CARD_SIZE)
+                            )
                             modelDirToModelIcon[folder] = label
 
         for folder in sortedNumerically(modelDirToModelIcon):
             self.voiceCards.addWidget(modelDirToModelIcon[folder])
 
-        self.voiceCards.addWidget(VoiceCardPlaceholderWidget(VOICE_CARD_SIZE), selectable=False)
+        self.voiceCards.addWidget(
+            VoiceCardPlaceholderWidget(VOICE_CARD_SIZE), selectable=False
+        )
 
 
 class FlowContainer(QListWidget):
     def __init__(self):
         super().__init__()
 
+        # Allow dragging the cards around
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setDragEnabled(True)
-        self.setDragDropMode(QAbstractItemView.InternalMove)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
 
         # make it look like a normal scroll area
         self.viewport().setBackgroundRole(QPalette.Window)
@@ -70,12 +151,23 @@ class FlowContainer(QListWidget):
 
         self.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
-        self.setSpacing(4)
+
+        # Add margins for the items to make the selection frame around a card visible.
+        self.setStyleSheet(
+            f"""
+            QListWidget::item {{
+                margin:{VOICE_CARD_MARGIN}px;
+            }}
+            """
+        )
 
     def addWidget(self, widget: QWidget, selectable: bool = True):
         item = QListWidgetItem()
         if not selectable:
-            item.setFlags(item.flags() & ~(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled))
+            item.setFlags(
+                item.flags()
+                & ~(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
+            )
         self.addItem(item)
         item.setSizeHint(widget.sizeHint())
         self.setItemWidget(item, widget)
@@ -135,8 +227,8 @@ def cropCenterScalePixmap(pixmap: QPixmap, targetSize: QSize) -> QPixmap:
         # Original is too wide → crop horizontally
         cropW = int(oh * target_ratio)
         cropH = oh
-        x = (ow - cropW) // 2   # center horizontally
-        y = 0                    # from top
+        x = (ow - cropW) // 2  # center horizontally
+        y = 0  # from top
     else:
         # Original is too tall → crop vertically
         cropW = ow
@@ -153,4 +245,4 @@ def sortedNumerically(input: Iterable[str]) -> List[str]:
     def repl(num):
         return f"{int(num[0]):010d}"
 
-    return sorted(input, key=lambda i: re.sub(r'(\d+)', repl, i))
+    return sorted(input, key=lambda i: re.sub(r"(\d+)", repl, i))
