@@ -1,9 +1,10 @@
 import json
 import os
 import re
+import shutil
 from typing import Iterable, List
 
-from PySide6.QtCore import QSettings, QSize, Qt
+from PySide6.QtCore import QModelIndex, QSettings, QSize, Qt
 from PySide6.QtGui import QDragMoveEvent, QDropEvent, QFontMetrics, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -21,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from .audiosettings import AudioSettingsGroupBox
+from .exceptions import FailedToMoveVoiceCardException
 
 VOICE_CARD_SIZE = QSize(188, 262)
 VOICE_CARD_MARGIN = 8
@@ -98,7 +100,7 @@ class WindowAreaWidget(QWidget):
 
         modelDirToModelIcon: dict[str, QWidget] = {}
 
-        model_dir = "model_dir"
+        model_dir = "model_dir"  # TODO: use correct dir
 
         for folder in os.listdir(model_dir):
             if os.path.isdir(os.path.join(model_dir, folder)):
@@ -108,7 +110,9 @@ class WindowAreaWidget(QWidget):
                         params = json.load(f)
                         icon_file_name = params.get("iconFile", "")
                         if icon_file_name:
-                            pixmap = QPixmap(icon_file_name)
+                            pixmap = QPixmap(
+                                os.path.join(model_dir, folder, icon_file_name)
+                            )
                             label = QLabel(self)
                             label.setPixmap(
                                 cropCenterScalePixmap(pixmap, VOICE_CARD_SIZE)
@@ -122,6 +126,8 @@ class WindowAreaWidget(QWidget):
             VoiceCardPlaceholderWidget(VOICE_CARD_SIZE), selectable=False
         )
 
+        self.voiceCards.model().rowsMoved.connect(self.rearrangeVoiceModelDirs)
+
         settings = QSettings()
         settings.beginGroup("Interface")
 
@@ -129,6 +135,52 @@ class WindowAreaWidget(QWidget):
         self.voiceCards.currentRowChanged.connect(
             lambda row: settings.setValue("currentVoiceCardIndex", row)
         )
+
+    def rearrangeVoiceModelDirs(
+        self,
+        sourceParent: QModelIndex,
+        sourceStart: int,
+        sourceEnd: int,
+        destinationParent: QModelIndex,
+        destinationRow: int,
+    ):
+        if sourceStart != sourceEnd:
+            raise FailedToMoveVoiceCardException
+
+        model_dir = "model_dir"  # TODO: use correct dir
+
+        dirs = sorted(
+            [d for d in os.listdir(model_dir) if d.isdigit()], key=lambda x: int(x)
+        )
+        total = len(dirs)
+
+        if not (0 <= sourceStart < total) or not (0 <= destinationRow <= total):
+            raise FailedToMoveVoiceCardException("Invalid indices")
+
+        if destinationRow > sourceStart:
+            destinationRow -= 1
+
+        # Create a temp name for the moving directory to avoid name conflicts
+        src_path = os.path.join(model_dir, str(sourceStart))
+        tmp_path = os.path.join(model_dir, "_tmp_move")
+        shutil.move(src_path, tmp_path)
+
+        # Renumber other directories depending on move direction
+        if sourceStart < destinationRow:
+            # Shift everything between (sourceStart+1 ... destinationRow) up by one
+            for i in range(sourceStart + 1, destinationRow + 1):
+                os.rename(
+                    os.path.join(model_dir, str(i)), os.path.join(model_dir, str(i - 1))
+                )
+        else:
+            # Shift everything between (destinationRow ... sourceStart-1) down by one
+            for i in range(sourceStart - 1, destinationRow - 1, -1):
+                os.rename(
+                    os.path.join(model_dir, str(i)), os.path.join(model_dir, str(i + 1))
+                )
+
+        # Move the temp folder into its new numbered slot
+        shutil.move(tmp_path, os.path.join(model_dir, str(destinationRow)))
 
 
 class FlowContainer(QListWidget):
@@ -181,17 +233,26 @@ class FlowContainer(QListWidget):
 
 
 class FlowContainerWithFixedLast(FlowContainer):
-    def dragMoveEvent(self, event: QDragMoveEvent):
+    def canDropBeforLast(self, event: QDropEvent):
         """Forbid going past the last item which is the voice card placeholder."""
         row = self.indexAt(event.pos()).row()
-        if row >= 0 and row < self.count() - 1:
+        if row == self.count() - 1:
+            itemRect = self.visualRect(self.model().index(self.count() - 1, 0))
+            return event.pos().x() < itemRect.center().x()
+        return row > 0
+
+    def dragMoveEvent(self, event: QDragMoveEvent):
+        if self.canDropBeforLast(event):
             super().dragMoveEvent(event)
 
     def dropEvent(self, event: QDropEvent):
-        super().dropEvent(event)
-        # self.setDropIndicatorShown(False)
-        # self.viewport().update()
-        # self.setDropIndicatorShown(True)
+        if self.canDropBeforLast(event):
+            super().dropEvent(event)
+        else:
+            # Hack to clear a failed drop indicator
+            self.setDropIndicatorShown(False)
+            self.viewport().update()
+            self.setDropIndicatorShown(True)
 
 
 class VoiceCardPlaceholderWidget(QWidget):

@@ -11,3 +11,8 @@ class PipelineNotInitializedException(Exception):
 class AudioDeviceDisappearedException(Exception):
     def __str__(self):
         return repr("Audio device disappeared.")
+
+
+class FailedToMoveVoiceCardException(Exception):
+    def __str__(self):
+        return repr("Failed to move voice card.")
