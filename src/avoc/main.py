@@ -1,30 +1,12 @@
 import json
 import logging
-import os
-import shutil
 import signal
 import sys
 from traceback import format_exc
 
 import numpy as np
-from PySide6.QtCore import (
-    QByteArray,
-    QCommandLineOption,
-    QCommandLineParser,
-    QIODevice,
-    QObject,
-    Qt,
-    QTimer,
-)
-from PySide6.QtMultimedia import QAudioFormat, QAudioSink, QAudioSource, QMediaDevices
-from PySide6.QtWidgets import (
-    QApplication,
-    QLabel,
-    QMainWindow,
-    QSystemTrayIcon,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtCore import QCommandLineOption, QCommandLineParser, QSettings, Qt, QTimer
+from PySide6.QtWidgets import QApplication, QMainWindow, QSystemTrayIcon
 from voiceconversion.common.deviceManager.DeviceManager import DeviceManager
 from voiceconversion.ModelSlotManager import ModelSlotManager
 from voiceconversion.RVC.RVCModelSlotGenerator import (
@@ -36,6 +18,7 @@ from voiceconversion.utils.VoiceChangerModel import AudioInOutFloat
 from voiceconversion.VoiceChangerSettings import VoiceChangerSettings
 from voiceconversion.VoiceChangerV2 import VoiceChangerV2
 
+from .audio import Audio
 from .exceptions import (
     PipelineNotInitializedException,
     VoiceChangerIsNotSelectedException,
@@ -64,7 +47,7 @@ class MainWindow(QMainWindow):
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:
-            self.close()  # closes the window (and quits the app if it's the last window)
+            self.close()  # closes the window (quits the app if it's the last window)
         else:
             super().keyPressEvent(event)
 
@@ -76,86 +59,6 @@ class MainWindow(QMainWindow):
         )
 
 
-class AudioFilter(QIODevice):
-    def __init__(
-        self, inputDevice: QIODevice, blockSamplesCount: int, change_voice, parent=None
-    ):
-        super().__init__(parent)
-
-        self.inputDevice = inputDevice
-        self.inputDevice.readyRead.connect(self.onReadyRead)
-        self.change_voice = change_voice
-        self.audioInBuff = np.empty(1, dtype="<f4")
-        self.blockSamplesCount = blockSamplesCount
-
-    def readData(self, maxlen: int) -> object:
-        data: QByteArray = self.inputDevice.read(maxlen)
-
-        result = np.empty(1, dtype="<f4")
-
-        self.audioInBuff = np.append(self.audioInBuff, np.frombuffer(bytes(data), dtype="<f4"))
-
-        while len(self.audioInBuff) >= self.blockSamplesCount:
-            block = self.audioInBuff[:self.blockSamplesCount]
-            self.audioInBuff = self.audioInBuff[self.blockSamplesCount:]
-
-            out_wav, _, _, _ = self.change_voice(block)
-            result = np.append(result, out_wav)
-
-        return result.astype("<f4").tobytes()
-
-    def isSequential(self) -> bool:
-        return self.inputDevice.isSequential()
-
-    def onReadyRead(self):
-        if self.bytesAvailable() != 0:
-            self.readyRead.emit()
-
-    def bytesAvailable(self) -> int:
-        srcBytesCount = len(self.audioInBuff) + self.inputDevice.bytesAvailable()
-        available = srcBytesCount - srcBytesCount % (self.blockSamplesCount * 4)
-        return available
-
-
-class Audio:
-    def __init__(self, blockSamplesCount: int, change_voice):
-        # Get the default input device.
-        audioInputDevices = QMediaDevices.audioInputs()
-        defaultAudioInputDevices = [d for d in audioInputDevices if d.isDefault()]
-        self.audioInputDevice = defaultAudioInputDevices[0]  # TODO: exception
-        audioInputFormat = self.audioInputDevice.preferredFormat()
-        audioInputFormat.setSampleRate(48000)
-        audioInputFormat.setSampleFormat(QAudioFormat.SampleFormat.Float)
-        self.audioSource = QAudioSource(
-            self.audioInputDevice,
-            audioInputFormat,
-        )  # TODO: check opening
-
-        # Get the default output device.
-        audioOutputDevices = QMediaDevices.audioOutputs()
-        defaultAudioOutputDevices = [d for d in audioOutputDevices if d.isDefault()]
-        self.audioOutputDevice = defaultAudioOutputDevices[0]  # TODO: exception
-        self.audioSink = QAudioSink(
-            self.audioOutputDevice,
-            audioInputFormat,
-        )  # TODO: check opening
-
-        # Start the IO.
-        self.voiceChangerFilter = AudioFilter(
-            self.audioSource.start(),
-            blockSamplesCount,
-            change_voice,
-        )  # TODO: check audioSource.error()
-        self.voiceChangerFilter.open(
-            QIODevice.OpenModeFlag.ReadOnly
-        )  # TODO: check opening
-
-        # Do the loopback.
-        self.audioSink.start(self.voiceChangerFilter)  # TODO: check audioSink.error()
-
-        # TODO: connect slots to the self.audioSink and self.audioSource errors to catch device changes.
-
-
 class VoiceChangerManager:
     def __init__(self):
         self.audio: Audio | None = None
@@ -165,11 +68,40 @@ class VoiceChangerManager:
         )  # TODO: fix the dir
         self.settings = VoiceChangerSettings()
         try:
-            with open(
-                "stored_setting.json", "r", encoding="utf-8"
-            ) as f:  # TODO: fix the settings file
-                settings = json.load(f)
-            self.settings.set_properties(settings)
+            audioSettings = QSettings()
+            audioSettings.beginGroup("AudioSettings")
+            interfaceSettings = QSettings()
+            interfaceSettings.beginGroup("Interface")
+            voiceChangerSettings = {
+                "version": "v1",
+                "modelSlotIndex": int(interfaceSettings.value("currentVoiceCardIndex")),
+                "inputSampleRate": int(
+                    audioSettings.value("sampleRate")
+                ),  # TODO: validation
+                "outputSampleRate": int(
+                    audioSettings.value("sampleRate")
+                ),  # TODO: validation
+                "gpu": 0,
+                "extraConvertSize": 0.1,
+                "serverReadChunkSize": 22,
+                "crossFadeOverlapSize": 0.1,
+                "forceFp32": 0,
+                "disableJit": 0,
+                "enableServerAudio": 1,
+                "exclusiveMode": 0,
+                "asioInputChannel": -1,
+                "asioOutputChannel": -1,
+                "dstId": 0,
+                "f0Detector": "rmvpe_onnx",
+                "tran": 6,
+                "formantShift": 0.0,
+                "useONNX": 0,
+                "silentThreshold": -90,
+                "indexRatio": 0.0,
+                "protect": 0.5,
+                "silenceFront": 1,
+            }
+            self.settings.set_properties(voiceChangerSettings)
         except:
             pass
 
@@ -221,8 +153,14 @@ class VoiceChangerManager:
             return
 
         if running:
+            settings = QSettings()
+            settings.beginGroup("AudioSettings")
             self.audio = Audio(
-                self.settings.serverReadChunkSize * 128, self.change_voice,
+                settings.value("audioInputDevice"),
+                settings.value("audioOutputDevice"),
+                settings.value("sampleRate"),  # TODO: validation
+                self.settings.serverReadChunkSize * 128,
+                self.change_voice,
             )  # TODO: pass settings
         else:
             self.audio = None

@@ -9,7 +9,7 @@ Suitable for gaming and streaming.
 # Features
 
 - [ ] Import of the voice models provided by the user
-- [ ] Switching between voices
+- [X] Switching between voices
 - [ ] Pitch and volume adjustments
 - [ ] Hotkeys and popup notifications for the ease of use in the background
 

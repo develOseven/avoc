@@ -6,3 +6,8 @@ class VoiceChangerIsNotSelectedException(Exception):
 class PipelineNotInitializedException(Exception):
     def __str__(self):
         return repr("Pipeline is not initialized.")
+
+
+class AudioDeviceDisappearedException(Exception):
+    def __str__(self):
+        return repr("Audio device disappeared.")

@@ -3,7 +3,7 @@ import os
 import re
 from typing import Iterable, List
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSettings, QSize, Qt
 from PySide6.QtGui import QDragMoveEvent, QDropEvent, QFontMetrics, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -77,8 +77,8 @@ class WindowAreaWidget(QWidget):
                 RUNNING_TXT if checked else START_TXT
             )
         )
-        # Unfortunately can't drag the cards while the voice conversion is running because
-        # it will select them and load.
+        # Unfortunately can't drag the cards while the voice conversion is running
+        # because it will select them and load.
         self.startButton.toggled.connect(
             lambda checked: self.voiceCards.setDragDropMode(
                 QAbstractItemView.DragDropMode.DropOnly
@@ -120,6 +120,14 @@ class WindowAreaWidget(QWidget):
 
         self.voiceCards.addWidget(
             VoiceCardPlaceholderWidget(VOICE_CARD_SIZE), selectable=False
+        )
+
+        settings = QSettings()
+        settings.beginGroup("Interface")
+
+        self.voiceCards.setCurrentRow(int(settings.value("currentVoiceCardIndex", 0)))
+        self.voiceCards.currentRowChanged.connect(
+            lambda row: settings.setValue("currentVoiceCardIndex", row)
         )
 
 

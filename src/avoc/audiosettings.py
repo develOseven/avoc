@@ -3,8 +3,8 @@ from PySide6.QtWidgets import QComboBox, QGridLayout, QGroupBox, QLabel, QWidget
 
 from .audiodevices import getAudioDevicesForSampleRate
 
-DEFAULT_SAMPLERATE = 44100
-SAMPLERATES = 32000, 44100, 48000, 96000, 128000
+DEFAULT_SAMPLE_RATE = 44100
+SAMPLE_RATES = 32000, 44100, 48000, 96000, 128000
 
 
 class AudioSettingsGroupBox(QGroupBox):
@@ -40,10 +40,10 @@ class AudioSettingsGroupBox(QGroupBox):
         settings.beginGroup("AudioSettings")
 
         # Restore the sample rate from saved settings.
-        for sampleRate in SAMPLERATES:
+        for sampleRate in SAMPLE_RATES:
             self.sampleRateComboBox.addItem(str(sampleRate))
 
-        savedSampleRate = settings.value("sampleRate", DEFAULT_SAMPLERATE)
+        savedSampleRate = settings.value("sampleRate", DEFAULT_SAMPLE_RATE)
         index = (
             self.sampleRateComboBox.findText(str(savedSampleRate))
             if savedSampleRate is not None
@@ -53,14 +53,14 @@ class AudioSettingsGroupBox(QGroupBox):
             self.sampleRateComboBox.setCurrentIndex(index)
         else:
             self.sampleRateComboBox.setCurrentIndex(
-                SAMPLERATES.index(DEFAULT_SAMPLERATE)
+                SAMPLE_RATES.index(DEFAULT_SAMPLE_RATE)
             )
 
         self.sampleRateComboBox.currentIndexChanged.connect(
             lambda index: self.audioInputComboBox.refreshDeviceOptions(
-                SAMPLERATES[index]
+                SAMPLE_RATES[index]
             ),
-            self.audioOutputComboBox.refreshDeviceOptions(SAMPLERATES[index]),
+            self.audioOutputComboBox.refreshDeviceOptions(SAMPLE_RATES[index]),
         )
 
         # Load the device lists.
@@ -81,20 +81,25 @@ class AudioSettingsGroupBox(QGroupBox):
 
         # Set up the saving of the settings.
         self.sampleRateComboBox.currentIndexChanged.connect(
-            lambda index: settings.setValue(
-                "sampleRate", self.sampleRateComboBox.currentText()
+            lambda: settings.setValue(
+                "sampleRate", int(self.sampleRateComboBox.currentText())
             ),
         )
         self.audioInputComboBox.currentIndexChanged.connect(
-            lambda index: settings.setValue(
+            lambda: settings.setValue(
                 "audioInputDevice", self.audioInputComboBox.currentData()
             ),
         )
         self.audioOutputComboBox.currentIndexChanged.connect(
-            lambda index: settings.setValue(
+            lambda: settings.setValue(
                 "audioOutputDevice", self.audioOutputComboBox.currentData()
             ),
         )
+
+        # Sync settings in case they weren't initialized.
+        settings.setValue("sampleRate", int(self.sampleRateComboBox.currentText()))
+        settings.setValue("audioInputDevice", self.audioInputComboBox.currentData())
+        settings.setValue("audioOutputDevice", self.audioOutputComboBox.currentData())
 
 
 class AudioDevicesComboBox(QComboBox):
