@@ -25,7 +25,7 @@ from .audiosettings import AudioSettingsGroupBox
 VOICE_CARD_SIZE = QSize(188, 262)
 VOICE_CARD_MARGIN = 8
 
-DROP_MODEL_FILES = "Drop model files here<br><b>*.pth</b> and <b>*.index</b><br>OR<br><b>*.onnx</b><br><br>"
+DROP_MODEL_FILES = "Drop model files here<br><b>*.pth</b> and <b>*.index</b><br><br>"
 DROP_ICON_FILE = "Drop icon file here<br><b>*.png</b>, <b>*.jpeg</b>, <b>*.gif</b>..."
 START_TXT = "Start"
 RUNNING_TXT = "Running..."
@@ -43,8 +43,8 @@ class WindowAreaWidget(QWidget):
 
         controlsLayout = QHBoxLayout()
 
-        audioSettingsGroupBox = AudioSettingsGroupBox()
-        controlsLayout.addWidget(audioSettingsGroupBox, stretch=3)
+        self.audioSettingsGroupBox = AudioSettingsGroupBox()
+        controlsLayout.addWidget(self.audioSettingsGroupBox, stretch=3)
 
         modelSettingsGroupBox = QGroupBox("Settings for the Active Voice Model")
         modelSettingsLayout = QGridLayout()
@@ -88,7 +88,7 @@ class WindowAreaWidget(QWidget):
         )
         # Can't change audio settings while running.
         self.startButton.toggled.connect(
-            lambda checked: audioSettingsGroupBox.setEnabled(not checked)
+            lambda checked: self.audioSettingsGroupBox.setEnabled(not checked)
         )
         controlsLayout.addWidget(self.startButton)
 
