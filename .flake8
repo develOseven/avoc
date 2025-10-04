@@ -1,0 +1,4 @@
+# Config to be compatible with the "black" code formatter.
+[flake8]
+max-line-length = 88
+extend-ignore = E203,E701
