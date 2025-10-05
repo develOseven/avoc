@@ -13,13 +13,13 @@ from .exceptions import AudioDeviceDisappearedException
 
 class AudioFilter(QIODevice):
     def __init__(
-        self, inputDevice: QIODevice, blockSamplesCount: int, change_voice, parent=None
+        self, inputDevice: QIODevice, blockSamplesCount: int, changeVoice, parent=None
     ):
         super().__init__(parent)
 
         self.inputDevice = inputDevice
         self.inputDevice.readyRead.connect(self.onReadyRead)
-        self.change_voice = change_voice
+        self.changeVoice = changeVoice
         self.audioInBuff = np.empty(1, dtype=np.float32)
         self.blockSamplesCount = blockSamplesCount
 
@@ -36,7 +36,7 @@ class AudioFilter(QIODevice):
             block = self.audioInBuff[: self.blockSamplesCount]
             self.audioInBuff = self.audioInBuff[self.blockSamplesCount :]
 
-            out_wav, _, _, _ = self.change_voice(block)
+            out_wav, _, _, _ = self.changeVoice(block)
             result = np.append(result, out_wav)
 
         return result.astype(np.float32).tobytes()
@@ -71,7 +71,7 @@ class Audio:
         audioOutputDeviceId: QByteArray,
         sampleRate: int,
         blockSamplesCount: int,
-        change_voice,
+        changeVoice,
     ):
         audioInputDevice = getAudioDeviceById(
             audioInputDeviceId, isInput=True
@@ -96,7 +96,7 @@ class Audio:
         self.voiceChangerFilter = AudioFilter(
             self.audioSource.start(),
             blockSamplesCount,
-            change_voice,
+            changeVoice,
         )  # TODO: check audioSource.error()
         self.voiceChangerFilter.open(
             QIODevice.OpenModeFlag.ReadOnly

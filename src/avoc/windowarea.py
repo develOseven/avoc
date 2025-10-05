@@ -4,8 +4,16 @@ import re
 import shutil
 from typing import Iterable, List
 
-from PySide6.QtCore import QModelIndex, QSettings, QSize, Qt
-from PySide6.QtGui import QDragMoveEvent, QDropEvent, QFontMetrics, QPalette, QPixmap
+from PySide6.QtCore import QModelIndex, QSettings, QSize, Qt, Signal
+from PySide6.QtGui import (
+    QDragEnterEvent,
+    QDragMoveEvent,
+    QDropEvent,
+    QFontMetrics,
+    QImageReader,
+    QPalette,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QGridLayout,
@@ -15,11 +23,13 @@ from PySide6.QtWidgets import (
     QListView,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QSlider,
     QVBoxLayout,
     QWidget,
 )
+from voiceconversion.utils.LoadModelParams import LoadModelParamFile, LoadModelParams
 
 from .audiosettings import AudioSettingsGroupBox
 from .exceptions import FailedToMoveVoiceCardException
@@ -27,10 +37,30 @@ from .exceptions import FailedToMoveVoiceCardException
 VOICE_CARD_SIZE = QSize(188, 262)
 VOICE_CARD_MARGIN = 8
 
+UNKNOWN_MODEL_NAME = "Unknown Model"
 DROP_MODEL_FILES = "Drop model files here<br><b>*.pth</b> and <b>*.index</b><br><br>"
 DROP_ICON_FILE = "Drop icon file here<br><b>*.png</b>, <b>*.jpeg</b>, <b>*.gif</b>..."
 START_TXT = "Start"
 RUNNING_TXT = "Running..."
+
+
+def voiceCardForSlot(modelDir: str, row: int) -> QWidget:
+    folder = str(row)
+    paramsFilePath = os.path.join(modelDir, folder, "params.json")
+    if os.path.exists(paramsFilePath):
+        name = UNKNOWN_MODEL_NAME
+        with open(paramsFilePath) as f:
+            params = json.load(f)
+            iconFileName = params.get("iconFile", "")
+            name = params.get("name", name)
+            if iconFileName:
+                pixmap = QPixmap(os.path.join(modelDir, folder, iconFileName))
+                label = QLabel()
+                label.setPixmap(cropCenterScalePixmap(pixmap, VOICE_CARD_SIZE))
+                return label
+    return VoiceCardPlaceholderWidget(
+        VOICE_CARD_SIZE, f"{name}<br><br>{DROP_ICON_FILE}"
+    )
 
 
 class WindowAreaWidget(QWidget):
@@ -41,7 +71,7 @@ class WindowAreaWidget(QWidget):
 
         layout = QVBoxLayout()
 
-        self.voiceCards = FlowContainerWithFixedLast()
+        self.voiceCards = VoiceCardsContainer(modelDir)
 
         layout.addWidget(self.voiceCards, stretch=2)
 
@@ -105,27 +135,17 @@ class WindowAreaWidget(QWidget):
         os.makedirs(modelDir, exist_ok=True)
 
         for folder in os.listdir(modelDir):
-            if os.path.isdir(os.path.join(modelDir, folder)):
-                params_file_path = os.path.join(modelDir, folder, "params.json")
-                if os.path.exists(params_file_path):
-                    with open(params_file_path) as f:
-                        params = json.load(f)
-                        icon_file_name = params.get("iconFile", "")
-                        if icon_file_name:
-                            pixmap = QPixmap(
-                                os.path.join(modelDir, folder, icon_file_name)
-                            )
-                            label = QLabel(self)
-                            label.setPixmap(
-                                cropCenterScalePixmap(pixmap, VOICE_CARD_SIZE)
-                            )
-                            modelDirToModelIcon[folder] = label
+            if folder.isdigit() and os.path.isdir(os.path.join(modelDir, folder)):
+                modelDirToModelIcon[folder] = voiceCardForSlot(modelDir, int(folder))
 
         for folder in sortedNumerically(modelDirToModelIcon):
             self.voiceCards.addWidget(modelDirToModelIcon[folder])
 
         self.voiceCards.addWidget(
-            VoiceCardPlaceholderWidget(VOICE_CARD_SIZE), selectable=False
+            VoiceCardPlaceholderWidget(
+                VOICE_CARD_SIZE, DROP_MODEL_FILES + DROP_ICON_FILE
+            ),
+            selectable=False,
         )
 
         self.voiceCards.model().rowsMoved.connect(self.rearrangeVoiceModelDirs)
@@ -254,6 +274,7 @@ class FlowContainerWithFixedLast(FlowContainer):
             super().dragMoveEvent(event)
 
     def dropEvent(self, event: QDropEvent):
+        # InternalMove drops to rearrange cards.
         if self.canDropBeforLast(event):
             super().dropEvent(event)
         else:
@@ -263,8 +284,106 @@ class FlowContainerWithFixedLast(FlowContainer):
             self.setDropIndicatorShown(True)
 
 
+class VoiceCardsContainer(FlowContainerWithFixedLast):
+
+    droppedModelFiles = Signal(LoadModelParams)
+    droppedIconFile = Signal(int, str)
+
+    def __init__(self, modelDir: str):
+        super().__init__()
+        self.modelDir = modelDir
+
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        if event.mimeData().hasUrls():
+            event.accept()
+        else:
+            super().dragEnterEvent(event)
+
+    def dropEvent(self, event: QDropEvent):
+        if not event.mimeData().hasUrls():
+            # InternalMove drops to rearrange cards.
+            return super().dropEvent(event)
+
+        # External drop to import models and icons.
+
+        files = [url for url in event.mimeData().urls() if url.isLocalFile()]
+        pthFiles = [file for file in files if file.toString().endswith(".pth")]
+        indexFiles = [file for file in files if file.toString().endswith(".index")]
+        iconFiles = [
+            file
+            for file in files
+            if not file.toString().endswith(".pth")
+            and not file.toString().endswith(".index")
+        ]
+        if len(pthFiles) != len(indexFiles):
+            QMessageBox.critical(
+                self,
+                "Error Importing a Voice Model",
+                "Both files expected: *.pth and *.index",
+            )
+            return
+        if len(indexFiles) == 1:
+            indexFile = indexFiles[0].toLocalFile()
+            if os.path.basename(indexFile).startswith("trained"):
+                QMessageBox.critical(
+                    self,
+                    "Error Importing a Voice Model",
+                    f"Use the 'added' index, not the 'trained'.\n\nFile:\n{indexFile}",
+                )
+                return
+        if len(iconFiles) > 1:
+            QMessageBox.critical(
+                self,
+                "Error Importing an Icon",
+                "Only one icon file expected.",
+            )
+        if len(iconFiles) == 1:
+            iconFile = iconFiles[0].toLocalFile()
+            supportedImageFormats = QImageReader.supportedImageFormats()
+            iconFileExt = os.path.splitext(iconFile)[1][1:].lower()
+            if iconFileExt.encode("utf-8") not in supportedImageFormats:
+                QMessageBox.critical(
+                    self,
+                    "Error Importing an Icon",
+                    f"Failed to import an icon for a voice card.\n\nFile:\n{iconFile}",
+                )
+                return
+
+        row = self.indexAt(event.pos()).row()
+        importingNew = row < 0 or row >= self.count()
+        slot = self.count() - 1 if importingNew else row
+
+        if len(indexFiles) == 1:
+            self.droppedModelFiles.emit(
+                LoadModelParams(
+                    voiceChangerType="RVC",
+                    slot=slot,
+                    isSampleMode=False,
+                    sampleId="",
+                    files=[
+                        LoadModelParamFile(
+                            name=pthFiles[0].toLocalFile(), kind="rvcModel", dir=""
+                        ),
+                        LoadModelParamFile(
+                            name=indexFiles[0].toLocalFile(), kind="rvcIndex", dir=""
+                        ),
+                    ],
+                    params={},
+                )
+            )
+
+        if len(iconFiles) == 1 and slot < self.count() - 1:
+            self.droppedIconFile.emit(slot, iconFiles[0].toLocalFile())
+
+    def onVoiceCardUpdated(self, row: int):
+        if row >= self.count() - 1:
+            self.insertWidget(row, voiceCardForSlot(self.modelDir, row))
+        else:
+            self.setItemWidget(self.item(row), voiceCardForSlot(self.modelDir, row))
+
+
 class VoiceCardPlaceholderWidget(QWidget):
-    def __init__(self, cardSize: QSize, parent: QWidget | None = None):
+    def __init__(self, cardSize: QSize, text: str, parent: QWidget | None = None):
         super().__init__(parent)
 
         self.cardSize = cardSize
@@ -273,8 +392,9 @@ class VoiceCardPlaceholderWidget(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
 
-        dropHere = QLabel(DROP_MODEL_FILES + DROP_ICON_FILE)
+        dropHere = QLabel(text)
         dropHere.setTextFormat(Qt.TextFormat.RichText)
+        dropHere.setWordWrap(True)
         dropHere.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         layout.addWidget(dropHere)

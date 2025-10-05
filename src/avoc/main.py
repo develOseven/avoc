@@ -1,5 +1,6 @@
 import logging
 import os
+import shutil
 import signal
 import sys
 from traceback import format_exc
@@ -8,10 +9,12 @@ import numpy as np
 from PySide6.QtCore import (
     QCommandLineOption,
     QCommandLineParser,
+    QObject,
     QSettings,
     QStandardPaths,
     Qt,
     QTimer,
+    Signal,
 )
 from PySide6.QtWidgets import QApplication, QMainWindow, QSystemTrayIcon, QWidget
 from voiceconversion.common.deviceManager.DeviceManager import DeviceManager
@@ -71,8 +74,13 @@ class MainWindow(QMainWindow):
         )
 
 
-class VoiceChangerManager:
+class VoiceChangerManager(QObject):
+
+    modelUpdated = Signal(int)
+
     def __init__(self, modelDir: str):
+        super().__init__()
+
         self.modelDir = modelDir
         self.audio: Audio | None = None
 
@@ -177,12 +185,12 @@ class VoiceChangerManager:
                 settings.value("audioOutputDevice"),
                 settings.value("sampleRate"),  # TODO: validation
                 voiceChangerSettings.serverReadChunkSize * 128,
-                self.change_voice,
+                self.changeVoice,
             )  # TODO: pass settings
         else:
             self.audio = None
 
-    def change_voice(
+    def changeVoice(
         self, receivedData: AudioInOutFloat
     ) -> tuple[AudioInOutFloat, float, list[int], tuple | None]:
         if self.passThrough:
@@ -217,6 +225,64 @@ class VoiceChangerManager:
                 [0, 0, 0],
                 ("Exception", format_exc()),
             )
+
+    def importModel(self, params: LoadModelParams):
+        slotDir = os.path.join(
+            self.modelDir,
+            str(params.slot),
+        )
+
+        iconFile = ""
+        if os.path.isdir(slotDir):
+            # Replacing existing model, delete everything except for the icon.
+            slotInfo = self.modelSlotManager.get_slot_info(params.slot)
+            iconFile = slotInfo.iconFile
+            for entry in os.listdir(slotDir):
+                if entry != iconFile:
+                    filePath = os.path.join(slotDir, entry)
+                    if os.path.isdir(filePath):
+                        shutil.rmtree(filePath)
+                    else:
+                        os.remove(filePath)
+
+        for file in params.files:
+            logger.info(f"FILE: {file}")
+            srcPath = os.path.join(file.dir, file.name)
+            dstDir = os.path.join(
+                self.modelDir,
+                str(params.slot),
+                file.dir,
+            )
+            dstPath = os.path.join(dstDir, os.path.basename(file.name))
+            os.makedirs(dstDir, exist_ok=True)
+            logger.info(f"Copying {srcPath} -> {dstPath}")
+            shutil.copy(srcPath, dstPath)
+            file.name = os.path.basename(dstPath)
+
+        if params.voiceChangerType == "RVC":
+            slotInfo = RVCModelSlotGenerator.load_model(params, self.modelDir)
+            self.modelSlotManager.save_model_slot(params.slot, slotInfo)
+
+        # Restore icon.
+        slotInfo = self.modelSlotManager.get_slot_info(params.slot)
+        slotInfo.iconFile = iconFile
+        self.modelSlotManager.save_model_slot(params.slot, slotInfo)
+
+        self.modelUpdated.emit(params.slot)
+
+    def setModelIcon(self, slot: int, iconFile: str):
+        iconFileBaseName = os.path.basename(iconFile)
+        storePath = os.path.join(self.modelDir, str(slot), iconFileBaseName)
+        try:
+            shutil.copy(iconFile, storePath)
+        except shutil.SameFileError:
+            pass
+        slotInfo = self.modelSlotManager.get_slot_info(slot)
+        if slotInfo.iconFile != "" and slotInfo.iconFile != iconFileBaseName:
+            os.remove(os.path.join(self.modelDir, str(slot), slotInfo.iconFile))
+        slotInfo.iconFile = iconFileBaseName
+        self.modelSlotManager.save_model_slot(slot, slotInfo)
+        self.modelUpdated.emit(slot)
 
 
 def main():
@@ -258,6 +324,15 @@ def main():
         )
         window.windowAreaWidget.voiceCards.currentRowChanged.connect(
             lambda: window.vcm.initialize()
+        )
+        window.windowAreaWidget.voiceCards.droppedModelFiles.connect(
+            lambda loadModelParams: window.vcm.importModel(loadModelParams)
+        )
+        window.windowAreaWidget.voiceCards.droppedIconFile.connect(
+            lambda slot, iconFile: window.vcm.setModelIcon(slot, iconFile)
+        )
+        window.vcm.modelUpdated.connect(
+            lambda slot: window.windowAreaWidget.voiceCards.onVoiceCardUpdated(slot),
         )
         (
             (
