@@ -34,8 +34,10 @@ RUNNING_TXT = "Running..."
 
 
 class WindowAreaWidget(QWidget):
-    def __init__(self, parent: QWidget | None = None):
+    def __init__(self, modelDir: str, parent: QWidget | None = None):
         super().__init__(parent)
+
+        self.modelDir = modelDir
 
         layout = QVBoxLayout()
 
@@ -100,18 +102,18 @@ class WindowAreaWidget(QWidget):
 
         modelDirToModelIcon: dict[str, QWidget] = {}
 
-        model_dir = "model_dir"  # TODO: use correct dir
+        os.makedirs(modelDir, exist_ok=True)
 
-        for folder in os.listdir(model_dir):
-            if os.path.isdir(os.path.join(model_dir, folder)):
-                params_file_path = os.path.join(model_dir, folder, "params.json")
+        for folder in os.listdir(modelDir):
+            if os.path.isdir(os.path.join(modelDir, folder)):
+                params_file_path = os.path.join(modelDir, folder, "params.json")
                 if os.path.exists(params_file_path):
                     with open(params_file_path) as f:
                         params = json.load(f)
                         icon_file_name = params.get("iconFile", "")
                         if icon_file_name:
                             pixmap = QPixmap(
-                                os.path.join(model_dir, folder, icon_file_name)
+                                os.path.join(modelDir, folder, icon_file_name)
                             )
                             label = QLabel(self)
                             label.setPixmap(
@@ -136,6 +138,12 @@ class WindowAreaWidget(QWidget):
             lambda row: settings.setValue("currentVoiceCardIndex", row)
         )
 
+        # Disable the start button if there are no voice cards.
+        self.voiceCards.currentRowChanged.connect(
+            lambda row: self.startButton.setEnabled(row >= 0)
+        )
+        self.startButton.setEnabled(self.voiceCards.currentRow() >= 0)
+
     def rearrangeVoiceModelDirs(
         self,
         sourceParent: QModelIndex,
@@ -147,10 +155,8 @@ class WindowAreaWidget(QWidget):
         if sourceStart != sourceEnd:
             raise FailedToMoveVoiceCardException
 
-        model_dir = "model_dir"  # TODO: use correct dir
-
         dirs = sorted(
-            [d for d in os.listdir(model_dir) if d.isdigit()], key=lambda x: int(x)
+            [d for d in os.listdir(self.modelDir) if d.isdigit()], key=lambda x: int(x)
         )
         total = len(dirs)
 
@@ -161,8 +167,8 @@ class WindowAreaWidget(QWidget):
             destinationRow -= 1
 
         # Create a temp name for the moving directory to avoid name conflicts
-        src_path = os.path.join(model_dir, str(sourceStart))
-        tmp_path = os.path.join(model_dir, "_tmp_move")
+        src_path = os.path.join(self.modelDir, str(sourceStart))
+        tmp_path = os.path.join(self.modelDir, "_tmp_move")
         shutil.move(src_path, tmp_path)
 
         # Renumber other directories depending on move direction
@@ -170,17 +176,19 @@ class WindowAreaWidget(QWidget):
             # Shift everything between (sourceStart+1 ... destinationRow) up by one
             for i in range(sourceStart + 1, destinationRow + 1):
                 os.rename(
-                    os.path.join(model_dir, str(i)), os.path.join(model_dir, str(i - 1))
+                    os.path.join(self.modelDir, str(i)),
+                    os.path.join(self.modelDir, str(i - 1)),
                 )
         else:
             # Shift everything between (destinationRow ... sourceStart-1) down by one
             for i in range(sourceStart - 1, destinationRow - 1, -1):
                 os.rename(
-                    os.path.join(model_dir, str(i)), os.path.join(model_dir, str(i + 1))
+                    os.path.join(self.modelDir, str(i)),
+                    os.path.join(self.modelDir, str(i + 1)),
                 )
 
         # Move the temp folder into its new numbered slot
-        shutil.move(tmp_path, os.path.join(model_dir, str(destinationRow)))
+        shutil.move(tmp_path, os.path.join(self.modelDir, str(destinationRow)))
 
 
 class FlowContainer(QListWidget):

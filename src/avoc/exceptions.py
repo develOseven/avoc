@@ -16,3 +16,8 @@ class AudioDeviceDisappearedException(Exception):
 class FailedToMoveVoiceCardException(Exception):
     def __str__(self):
         return repr("Failed to move voice card.")
+
+
+class FailedToSetModelDirException(Exception):
+    def __str__(self):
+        return repr("Failed set the directory for storing the voice models.")

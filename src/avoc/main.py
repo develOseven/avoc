@@ -1,11 +1,18 @@
-import json
 import logging
+import os
 import signal
 import sys
 from traceback import format_exc
 
 import numpy as np
-from PySide6.QtCore import QCommandLineOption, QCommandLineParser, QSettings, Qt, QTimer
+from PySide6.QtCore import (
+    QCommandLineOption,
+    QCommandLineParser,
+    QSettings,
+    QStandardPaths,
+    Qt,
+    QTimer,
+)
 from PySide6.QtWidgets import QApplication, QMainWindow, QSystemTrayIcon, QWidget
 from voiceconversion.common.deviceManager.DeviceManager import DeviceManager
 from voiceconversion.ModelSlotManager import ModelSlotManager
@@ -20,10 +27,13 @@ from voiceconversion.VoiceChangerV2 import VoiceChangerV2
 
 from .audio import Audio
 from .exceptions import (
+    FailedToSetModelDirException,
     PipelineNotInitializedException,
     VoiceChangerIsNotSelectedException,
 )
 from .windowarea import WindowAreaWidget
+
+MODEL_DIR_NAME = "model_dir"
 
 stream_handler = logging.StreamHandler()
 stream_handler.setLevel(logging.INFO)
@@ -38,10 +48,10 @@ logger = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, parent: QWidget | None = None):
+    def __init__(self, modelDir: str, parent: QWidget | None = None):
         super().__init__(parent)
 
-        self.windowAreaWidget = WindowAreaWidget()
+        self.windowAreaWidget = WindowAreaWidget(modelDir)
         self.setCentralWidget(self.windowAreaWidget)
         self.vcm: VoiceChangerManager | None = (
             None  # TODO: remove the no-model-load CLI arg
@@ -62,14 +72,15 @@ class MainWindow(QMainWindow):
 
 
 class VoiceChangerManager:
-    def __init__(self) -> None:
+    def __init__(self, modelDir: str):
+        self.modelDir = modelDir
         self.audio: Audio | None = None
 
         voiceChangerSettings = self.getVoiceChangerSettings()
         self.passThrough = False
 
         self.modelSlotManager = ModelSlotManager.get_instance(
-            "model_dir", "upload_dir"
+            self.modelDir, "upload_dir"
         )  # TODO: fix the dir
 
         self.device_manager = DeviceManager.get_instance()
@@ -144,7 +155,7 @@ class VoiceChangerManager:
             logger.info("Loading RVC...")
             self.vc.initialize(
                 RVCr2(
-                    "model_dir",
+                    self.modelDir,
                     "pretrain/content_vec_500.onnx",
                     slotInfo,
                     voiceChangerSettings,
@@ -211,7 +222,6 @@ class VoiceChangerManager:
 def main():
     app = QApplication(sys.argv)
     app.setOrganizationName("A-Voc-Org")
-    app.setOrganizationDomain("A-Voc-Domain")
     app.setApplicationName("A-Voc")
 
     clParser = QCommandLineParser()
@@ -231,11 +241,18 @@ def main():
     timer.start(250)
     timer.timeout.connect(lambda: None)  # Let the interpreter run each 500 ms.
 
-    window = MainWindow()
+    # Set the path where the voice models are stored.
+    appLocalDataLocation = QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.AppLocalDataLocation
+    )
+    if appLocalDataLocation == "":
+        raise FailedToSetModelDirException
+
+    window = MainWindow(os.path.join(appLocalDataLocation, MODEL_DIR_NAME))
     window.setWindowTitle("A-Voc")
 
     if not clParser.isSet(noModelLoadOption):
-        window.vcm = VoiceChangerManager()
+        window.vcm = VoiceChangerManager(window.windowAreaWidget.modelDir)
         window.windowAreaWidget.startButton.toggled.connect(
             lambda checked: window.vcm.setRunning(checked)
         )
@@ -245,6 +262,7 @@ def main():
         (
             (
                 window.windowAreaWidget.audioSettingsGroupBox.sampleRateComboBox
+                # Lots of parenthesis because black code formatter doesn't break lines.
             ).currentIndexChanged.connect(lambda: window.vcm.initialize())
         )  # It isn't running when changing sample rate.
 
