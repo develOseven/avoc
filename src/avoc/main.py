@@ -99,7 +99,7 @@ class VoiceChangerManager(QObject):
             voiceChangerSettings.disableJit,
         )
 
-        self.vc = VoiceChangerV2(voiceChangerSettings, "tmp_dir")  # TODO: fix the dir
+        self.vc = VoiceChangerV2(voiceChangerSettings)
         self.initialize()
 
     def getVoiceChangerSettings(self):

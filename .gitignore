@@ -14,8 +14,4 @@ __pycache__
 pretrain/
 
 # User data in the legacy voicechanger.
-model_dir/
 stored_setting.json
-
-# Runtime data in the legacy voicechanger.
-tmp_dir/
