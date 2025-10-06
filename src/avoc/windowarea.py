@@ -81,6 +81,7 @@ class WindowAreaWidget(QWidget):
         controlsLayout.addWidget(self.audioSettingsGroupBox, stretch=3)
 
         modelSettingsGroupBox = QGroupBox("Settings for the Active Voice Model")
+        modelSettingsGroupBox.setEnabled(False)  # TODO: implement
         modelSettingsLayout = QGridLayout()
         row = 0
         pitchSlider = QSlider(Qt.Orientation.Horizontal)
