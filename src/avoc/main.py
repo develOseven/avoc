@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import shutil
@@ -18,6 +19,10 @@ from PySide6.QtCore import (
 )
 from PySide6.QtWidgets import QApplication, QMainWindow, QSystemTrayIcon, QWidget
 from voiceconversion.common.deviceManager.DeviceManager import DeviceManager
+from voiceconversion.downloader.WeightDownloader import (
+    CONTENT_VEC_500_ONNX,
+    downloadWeight,
+)
 from voiceconversion.ModelSlotManager import ModelSlotManager
 from voiceconversion.RVC.RVCModelSlotGenerator import (
     RVCModelSlotGenerator,  # Parameters cannot be obtained when imported at startup.
@@ -36,6 +41,7 @@ from .exceptions import (
 )
 from .windowarea import WindowAreaWidget
 
+PRETRAIN_DIR_NAME = "pretrain"
 MODEL_DIR_NAME = "model_dir"
 
 stream_handler = logging.StreamHandler()
@@ -78,10 +84,11 @@ class VoiceChangerManager(QObject):
 
     modelUpdated = Signal(int)
 
-    def __init__(self, modelDir: str):
+    def __init__(self, modelDir: str, pretrainDir: str):
         super().__init__()
 
         self.modelDir = modelDir
+        self.pretrainDir = pretrainDir
         self.audio: Audio | None = None
 
         voiceChangerSettings = self.getVoiceChangerSettings()
@@ -164,11 +171,12 @@ class VoiceChangerManager(QObject):
             self.vc.initialize(
                 RVCr2(
                     self.modelDir,
-                    "pretrain/content_vec_500.onnx",
+                    os.path.join(self.pretrainDir, CONTENT_VEC_500_ONNX),
                     slotInfo,
                     voiceChangerSettings,
-                )
-            )  # TODO: fix the dir
+                ),
+                self.pretrainDir,
+            )
         else:
             logger.error(f"Unknown voice changer model: {slotInfo.voiceChangerType}")
 
@@ -307,18 +315,21 @@ def main():
     timer.start(250)
     timer.timeout.connect(lambda: None)  # Let the interpreter run each 500 ms.
 
-    # Set the path where the voice models are stored.
+    # Set the path where the voice models are stored and pretrained weights are loaded.
     appLocalDataLocation = QStandardPaths.writableLocation(
         QStandardPaths.StandardLocation.AppLocalDataLocation
     )
     if appLocalDataLocation == "":
         raise FailedToSetModelDirException
 
+    pretrainDir = os.path.join(appLocalDataLocation, PRETRAIN_DIR_NAME)
+    asyncio.run(downloadWeight(pretrainDir))
+
     window = MainWindow(os.path.join(appLocalDataLocation, MODEL_DIR_NAME))
     window.setWindowTitle("A-Voc")
 
     if not clParser.isSet(noModelLoadOption):
-        window.vcm = VoiceChangerManager(window.windowAreaWidget.modelDir)
+        window.vcm = VoiceChangerManager(window.windowAreaWidget.modelDir, pretrainDir)
         window.windowAreaWidget.startButton.toggled.connect(
             lambda checked: window.vcm.setRunning(checked)
         )
