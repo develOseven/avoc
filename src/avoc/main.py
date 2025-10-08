@@ -17,7 +17,9 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QApplication, QMainWindow, QSystemTrayIcon, QWidget
+from PySide6_GlobalHotkeys import Listener, bindHotkeys
 from voiceconversion.common.deviceManager.DeviceManager import DeviceManager
 from voiceconversion.downloader.WeightDownloader import (
     CONTENT_VEC_500_ONNX,
@@ -55,6 +57,9 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# The IDs to talk with the keybindings configurator about the voice cards.
+VOICE_CARD_KEYBIND_ID_PREFIX = "voice_card_"
+
 
 class MainWindow(QMainWindow):
     def __init__(self, modelDir: str, parent: QWidget | None = None):
@@ -62,6 +67,42 @@ class MainWindow(QMainWindow):
 
         self.windowAreaWidget = WindowAreaWidget(modelDir)
         self.setCentralWidget(self.windowAreaWidget)
+
+        def onVoiceCardHotkey(shortcutId: str):
+            if shortcutId.startswith(VOICE_CARD_KEYBIND_ID_PREFIX):
+                rowPlusOne = shortcutId.removeprefix(VOICE_CARD_KEYBIND_ID_PREFIX)
+                if rowPlusOne.isdigit():
+                    row = int(rowPlusOne) - 1  # 1-based indexing
+                    if (
+                        # 1 placeholder card
+                        row < self.windowAreaWidget.voiceCards.count() - 1
+                        and row >= 0
+                    ):
+                        self.windowAreaWidget.voiceCards.setCurrentRow(row)
+
+        self.hotkeyListener = Listener()
+        self.hotkeyListener.hotkeyPressed.connect(onVoiceCardHotkey)
+
+        configureKeybindingsAction = QAction("Configure Keybindings", self)
+        configureKeybindingsAction.triggered.connect(
+            lambda: bindHotkeys(
+                [
+                    (
+                        f"{VOICE_CARD_KEYBIND_ID_PREFIX}{row}",
+                        {"description": f"Select Voice Card {row}"},
+                    )
+                    for row in range(
+                        1,  # 1-based indexing
+                        self.windowAreaWidget.voiceCards.count(),  # 1 placeholder card
+                        1,
+                    )
+                ],
+            )
+        )
+
+        preferencesMenu = self.menuBar().addMenu("Preferences")
+        preferencesMenu.addAction(configureKeybindingsAction)
+
         self.vcm: VoiceChangerManager | None = (
             None  # TODO: remove the no-model-load CLI arg
         )
