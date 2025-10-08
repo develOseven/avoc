@@ -20,13 +20,13 @@ class AudioFilter(QIODevice):
         self.inputDevice = inputDevice
         self.inputDevice.readyRead.connect(self.onReadyRead)
         self.changeVoice = changeVoice
-        self.audioInBuff = np.empty(1, dtype=np.float32)
+        self.audioInBuff = np.empty(0, dtype=np.float32)
         self.blockSamplesCount = blockSamplesCount
 
     def readData(self, maxlen: int) -> object:
         data: QByteArray = self.inputDevice.read(maxlen)
 
-        result = np.empty(1, dtype=np.float32)
+        result = np.empty(0, dtype=np.float32)
 
         self.audioInBuff = np.append(
             self.audioInBuff, np.frombuffer(bytes(data), dtype=np.float32)

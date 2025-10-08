@@ -3,8 +3,14 @@ from PySide6.QtWidgets import QComboBox, QGridLayout, QGroupBox, QLabel, QWidget
 
 from .audiodevices import getAudioDevicesForSampleRate
 
-DEFAULT_SAMPLE_RATE = 44100
-SAMPLE_RATES = 32000, 44100, 48000, 96000, 128000
+DEFAULT_SAMPLE_RATE = 48000
+SAMPLE_RATES = (
+    32000,
+    44100,
+    48000,
+    96000,
+    128000,
+)  # TODO: 44100 leads to crashes because the algo resamples to 16k badly
 
 
 class AudioSettingsGroupBox(QGroupBox):

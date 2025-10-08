@@ -165,7 +165,10 @@ class VoiceChangerManager(QObject):
         )
 
         if slotInfo.voiceChangerType == self.vc.get_type():
-            self.vc.set_slot_info(slotInfo)
+            self.vc.set_slot_info(
+                slotInfo,
+                self.pretrainDir,
+            )
         elif slotInfo.voiceChangerType == "RVC":
             logger.info("Loading RVC...")
             self.vc.initialize(
@@ -313,7 +316,7 @@ def main():
     signal.signal(signal.SIGINT, lambda *args: QApplication.quit())
     timer = QTimer()
     timer.start(250)
-    timer.timeout.connect(lambda: None)  # Let the interpreter run each 500 ms.
+    timer.timeout.connect(lambda: None)  # Let the interpreter run each 250 ms.
 
     # Set the path where the voice models are stored and pretrained weights are loaded.
     appLocalDataLocation = QStandardPaths.writableLocation(
