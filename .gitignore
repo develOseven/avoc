@@ -9,9 +9,3 @@ __pycache__
 *egg-info/
 
 .vscode
-
-# Static data in the legacy voicechanger.
-pretrain/
-
-# User data in the legacy voicechanger.
-stored_setting.json
