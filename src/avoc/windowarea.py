@@ -429,7 +429,7 @@ def cropCenterScalePixmap(pixmap: QPixmap, targetSize: QSize) -> QPixmap:
 
     cropped = pixmap.copy(x, y, cropW, cropH)
 
-    return cropped.scaled(targetSize)
+    return cropped.scaled(targetSize, mode=Qt.TransformationMode.SmoothTransformation)
 
 
 def sortedNumerically(input: Iterable[str]) -> List[str]:
