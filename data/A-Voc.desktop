@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=A-Voc
+X-AppImage-Name=A-Voc
+Exec=python -m avoc
+Icon=A-Voc
+Type=Application
+Categories=AudioVideo;Audio;
