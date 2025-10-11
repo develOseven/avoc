@@ -37,7 +37,7 @@ Install:
 ```sh
 mkdir avoc-installdir
 cd avoc-installdir
-pyenv local 3.10.8
+pyenv local 3.12.3
 python3 -m venv ./venv
 pip install avoc
 ```
@@ -73,7 +73,7 @@ The Voice_Sink and Voice_Microphone devices will appear. Use the Voice_Sink as v
 Assign a compatible Python version to this directory using pyenv:
 
 ```sh
-pyenv local 3.10.8
+pyenv local 3.12.3
 ```
 
 Create an environment using venv:
@@ -84,11 +84,17 @@ python -m venv .venv
 
 or through VSCode with `~/.pyenv/shims/python` as the Python interpreter.
 
-Install the requirements:
+Install the dependencies:
 
 ```sh
 source .venv/bin/activate
 pip install .
+```
+
+(Optional) If it doesn't install, try installing reproducible requirements:
+
+```sh
+pip install -r requirements-3.12.3.txt
 ```
 
 Run:

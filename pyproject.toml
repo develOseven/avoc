@@ -6,7 +6,6 @@ authors = [
 ]
 description = "Voice changer for desktop"
 readme = "README.md"
-requires-python = "==3.12.3"
 dependencies = [
   "PySide6",
   "PySide6-GlobalHotkeys",
