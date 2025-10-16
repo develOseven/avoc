@@ -17,7 +17,7 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QIcon, QAction
 from PySide6.QtWidgets import QApplication, QMainWindow, QSystemTrayIcon, QWidget
 from PySide6_GlobalHotkeys import Listener, bindHotkeys
 from voiceconversion.common.deviceManager.DeviceManager import DeviceManager
@@ -341,6 +341,11 @@ def main():
     app = QApplication(sys.argv)
     app.setOrganizationName("A-Voc-Org")
     app.setApplicationName("A-Voc")
+
+    icon = QIcon()
+    icon.addFile(os.path.join(os.path.dirname(__file__), "A-Voc.svg"))
+
+    app.setWindowIcon(icon)
 
     clParser = QCommandLineParser()
     clParser.addHelpOption()

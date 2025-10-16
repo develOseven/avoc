@@ -21,6 +21,12 @@ license-files = ["LICEN[CS]E*"]
 [project.scripts]
 avoc = "avoc:main.main"
 
+[build-system]
+requires = [
+  "setuptools>=60",
+  "setuptools-scm>=8.0",
+]
+
 [project.urls]
 Homepage = "https://github.com/develOseven/avoc"
 Issues = "https://github.com/develOseven/avoc/issues"

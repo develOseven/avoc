@@ -38,16 +38,22 @@ Install:
 mkdir avoc-installdir
 cd avoc-installdir
 pyenv local 3.12.3
-python -m venv ./venv
+python -m venv .venv
 source .venv/bin/activate
 pip install avoc
+avoc_files=$(pip show --files avoc)
+site_packages=$(echo "$avoc_files" | sed -nre 's/^Location:\s*(.*$)/\1/p')
+desktop_file="$site_packages/$(echo "$avoc_files" | sed -nre 's/^\s*(.*A-Voc.desktop$)/\1/p')"
+icon_file="$site_packages/$(echo "$avoc_files" | sed -nre 's/^\s*(.*A-Voc.svg$)/\1/p')"
+cp -t ~/.local/share/applications/ "$desktop_file"
+echo "Path=$PWD" >> ~/.local/share/applications/A-Voc.desktop
+cp -t ~/.local/share/icons/hicolor/scalable/apps/ "$icon_file"
 ```
 
 Launch:
 
 ```sh
-source .venv/bin/activate
-avoc
+gio launch ~/.local/share/applications/A-Voc.desktop
 ```
 
 ## (Optional) Virtual Microphone
@@ -101,7 +107,7 @@ pip install -r requirements-3.12.3.txt
 Run:
 
 ```sh
-python -m src.avoc.__main__
+python -m main
 ```
 
 (Optional) Get sources of the voice conversion library and install it in developer mode:
