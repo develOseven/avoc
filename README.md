@@ -38,14 +38,15 @@ Install:
 mkdir avoc-installdir
 cd avoc-installdir
 pyenv local 3.12.3
-python3 -m venv ./venv
+python -m venv ./venv
+source .venv/bin/activate
 pip install avoc
 ```
 
 Launch:
 
 ```sh
-python3 -m venv ./venv
+source .venv/bin/activate
 avoc
 ```
 
@@ -121,6 +122,6 @@ It allows to work on the voice conversion library.
     "name": "Python Debugger: Module",
     "type": "debugpy",
     "request": "launch",
-    "module": "src.avoc.__main__",
+    "module": "main",
 }
 ```
