@@ -1,4 +1,4 @@
-# A-Voc Local Realtime Voice Changer for Desktop
+# AVoc: Local Realtime Voice Changer for Desktop
 
 A speech-to-speech converter that uses AI models locally to convert microphone audio to a different voice in near-realtime.
 
@@ -43,17 +43,17 @@ source .venv/bin/activate
 pip install avoc
 avoc_files=$(pip show --files avoc)
 site_packages=$(echo "$avoc_files" | sed -nre 's/^Location:\s*(.*$)/\1/p')
-desktop_file="$site_packages/$(echo "$avoc_files" | sed -nre 's/^\s*(.*A-Voc.desktop$)/\1/p')"
-icon_file="$site_packages/$(echo "$avoc_files" | sed -nre 's/^\s*(.*A-Voc.svg$)/\1/p')"
+desktop_file="$site_packages/$(echo "$avoc_files" | sed -nre 's/^\s*(.*AVoc.desktop$)/\1/p')"
+icon_file="$site_packages/$(echo "$avoc_files" | sed -nre 's/^\s*(.*AVoc.svg$)/\1/p')"
 cp -t ~/.local/share/applications/ "$desktop_file"
-echo "Path=$PWD" >> ~/.local/share/applications/A-Voc.desktop
+echo "Path=$PWD" >> ~/.local/share/applications/AVoc.desktop
 cp -t ~/.local/share/icons/hicolor/scalable/apps/ "$icon_file"
 ```
 
 Launch:
 
 ```sh
-gio launch ~/.local/share/applications/A-Voc.desktop
+gio launch ~/.local/share/applications/AVoc.desktop
 ```
 
 ## (Optional) Virtual Microphone

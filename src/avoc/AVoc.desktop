@@ -1,6 +1,6 @@
 [Desktop Entry]
-Name=A-Voc
+Name=AVoc
 Exec=bash -c 'source .venv/bin/activate && avoc'
-Icon=A-Voc
+Icon=AVoc
 Type=Application
 Categories=AudioVideo;Audio;

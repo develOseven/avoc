@@ -17,7 +17,7 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
-from PySide6.QtGui import QIcon, QAction
+from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import QApplication, QMainWindow, QSystemTrayIcon, QWidget
 from PySide6_GlobalHotkeys import Listener, bindHotkeys
 from voiceconversion.common.deviceManager.DeviceManager import DeviceManager
@@ -158,7 +158,7 @@ class VoiceChangerManager(QObject):
         interfaceSettings.beginGroup("Interface")
         voiceChangerSettingsDict = {
             "version": "v1",
-            "modelSlotIndex": int(interfaceSettings.value("currentVoiceCardIndex")),
+            "modelSlotIndex": int(interfaceSettings.value("currentVoiceCardIndex", -1)),
             "inputSampleRate": int(
                 audioSettings.value("sampleRate")
             ),  # TODO: validation
@@ -339,11 +339,11 @@ class VoiceChangerManager(QObject):
 
 def main():
     app = QApplication(sys.argv)
-    app.setOrganizationName("A-Voc-Org")
-    app.setApplicationName("A-Voc")
+    app.setOrganizationName("AVocOrg")
+    app.setApplicationName("AVoc")
 
     icon = QIcon()
-    icon.addFile(os.path.join(os.path.dirname(__file__), "A-Voc.svg"))
+    icon.addFile(os.path.join(os.path.dirname(__file__), "AVoc.svg"))
 
     app.setWindowIcon(icon)
 
@@ -375,7 +375,7 @@ def main():
     asyncio.run(downloadWeight(pretrainDir))
 
     window = MainWindow(os.path.join(appLocalDataLocation, MODEL_DIR_NAME))
-    window.setWindowTitle("A-Voc")
+    window.setWindowTitle("AVoc")
 
     if not clParser.isSet(noModelLoadOption):
         window.vcm = VoiceChangerManager(window.windowAreaWidget.modelDir, pretrainDir)
