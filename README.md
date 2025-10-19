@@ -6,6 +6,10 @@ Suitable for gaming and streaming.
 
 # Quick Start
 
+Drag your voice model files into the window.
+
+![screenshot](doc/screenshot.png)
+
 # Features
 
 - [X] Import of the voice models provided by the user
@@ -30,30 +34,57 @@ Open Source and Free for modification.
 
 # Installation
 
-## With Python Environment
+## For Arch-based Linux Distributions - from AUR
 
-Install:
+No cloning of this repo needed.
+
+```
+yay -S avoc
+```
+
+or for Manjaro
+
+```
+pamac build avoc
+```
+
+Launch from the menu or by running:
 
 ```sh
-mkdir avoc-installdir
-cd avoc-installdir
+gio launch /usr/share/applications/AVoc.desktop
+```
+
+## For other Linuxes
+
+Requires `pyenv`, `update-desktop-database` and some build tools to be installed.
+
+After that, install the voice changer into a local directory:
+
+```sh
+git clone https://github.com/develOseven/avoc
+cd avoc
 pyenv local 3.12.3
 python -m venv .venv
 source .venv/bin/activate
-pip install avoc
-avoc_files=$(pip show --files avoc)
-site_packages=$(echo "$avoc_files" | sed -nre 's/^Location:\s*(.*$)/\1/p')
-desktop_file="$site_packages/$(echo "$avoc_files" | sed -nre 's/^\s*(.*AVoc.desktop$)/\1/p')"
-icon_file="$site_packages/$(echo "$avoc_files" | sed -nre 's/^\s*(.*AVoc.svg$)/\1/p')"
-cp -t ~/.local/share/applications/ "$desktop_file"
+CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5" pip install . -r requirements-3.12.3.txt
+mkdir -p ~/.local/share/applications/
+cp -t ~/.local/share/applications/ src/avoc/AVoc.desktop
 echo "Path=$PWD" >> ~/.local/share/applications/AVoc.desktop
-cp -t ~/.local/share/icons/hicolor/scalable/apps/ "$icon_file"
+mkdir -p ~/.local/share/icons/hicolor/scalable/apps/
+cp -t ~/.local/share/icons/hicolor/scalable/apps/ src/avoc/AVoc.svg
+update-desktop-database
 ```
 
-Launch:
+Launch from the menu or by running:
 
 ```sh
 gio launch ~/.local/share/applications/AVoc.desktop
+```
+
+To uninstall:
+
+```sh
+rm ~/.local/share/applications/AVoc.desktop ~/.local/share/icons/hicolor/scalable/apps/AVoc.svg
 ```
 
 ## (Optional) Virtual Microphone
@@ -95,12 +126,6 @@ Install the dependencies:
 
 ```sh
 source .venv/bin/activate
-pip install .
-```
-
-(Optional) If it doesn't install, try installing reproducible requirements:
-
-```sh
 pip install -r requirements-3.12.3.txt
 ```
 

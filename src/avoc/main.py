@@ -339,6 +339,7 @@ class VoiceChangerManager(QObject):
 
 def main():
     app = QApplication(sys.argv)
+    app.setDesktopFileName("AVoc")
     app.setOrganizationName("AVocOrg")
     app.setApplicationName("AVoc")
 
