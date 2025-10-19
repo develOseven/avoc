@@ -17,8 +17,8 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
-from PySide6.QtGui import QAction, QIcon
-from PySide6.QtWidgets import QApplication, QMainWindow, QSystemTrayIcon, QWidget
+from PySide6.QtGui import QAction, QIcon, QPixmap
+from PySide6.QtWidgets import QApplication, QMainWindow, QSplashScreen, QSystemTrayIcon
 from PySide6_GlobalHotkeys import Listener, bindHotkeys
 from voiceconversion.common.deviceManager.DeviceManager import DeviceManager
 from voiceconversion.downloader.WeightDownloader import (
@@ -62,9 +62,7 @@ VOICE_CARD_KEYBIND_ID_PREFIX = "voice_card_"
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, modelDir: str, parent: QWidget | None = None):
-        super().__init__(parent)
-
+    def initialize(self, modelDir: str):
         self.windowAreaWidget = WindowAreaWidget(modelDir)
         self.setCentralWidget(self.windowAreaWidget)
 
@@ -124,6 +122,7 @@ class MainWindow(QMainWindow):
 class VoiceChangerManager(QObject):
 
     modelUpdated = Signal(int)
+    modelSettingsLoaded = Signal(int, float, float)
 
     def __init__(self, modelDir: str, pretrainDir: str):
         super().__init__()
@@ -148,7 +147,6 @@ class VoiceChangerManager(QObject):
         )
 
         self.vc = VoiceChangerV2(voiceChangerSettings)
-        self.initialize()
 
     def getVoiceChangerSettings(self):
         voiceChangerSettings = VoiceChangerSettings()
@@ -205,11 +203,21 @@ class VoiceChangerManager(QObject):
             }
         )
 
+        self.modelSettingsLoaded.emit(
+            slotInfo.defaultTune,
+            slotInfo.defaultFormantShift,
+            slotInfo.defaultIndexRatio,
+        )
+
         if slotInfo.voiceChangerType == self.vc.get_type():
             self.vc.set_slot_info(
                 slotInfo,
                 self.pretrainDir,
             )
+            # TODO: unify changing properties that don't need reinit.
+            self.vc.vcmodel.settings.tran = slotInfo.defaultTune
+            self.vc.vcmodel.settings.formantShift = slotInfo.defaultFormantShift
+            self.vc.vcmodel.settings.indexRatio = slotInfo.defaultIndexRatio
         elif slotInfo.voiceChangerType == "RVC":
             logger.info("Loading RVC...")
             self.vc.initialize(
@@ -223,6 +231,31 @@ class VoiceChangerManager(QObject):
             )
         else:
             logger.error(f"Unknown voice changer model: {slotInfo.voiceChangerType}")
+
+    def setModelSettings(
+        self,
+        pitch: int,
+        formantShift: float,
+        index: float,
+    ):
+        voiceChangerSettings = self.getVoiceChangerSettings()
+        val = voiceChangerSettings.modelSlotIndex
+        slotInfo = self.modelSlotManager.get_slot_info(val)
+        if slotInfo is None or slotInfo.voiceChangerType is None:
+            logger.warning(f"Model slot is not found {val}")
+            return
+
+        slotInfo.defaultTune = pitch
+        slotInfo.defaultFormantShift = formantShift
+        slotInfo.defaultIndexRatio = index
+
+        if self.vc.vcmodel is not None:
+            # TODO: unify changing properties that don't need reinit.
+            self.vc.vcmodel.settings.tran = slotInfo.defaultTune
+            self.vc.vcmodel.settings.formantShift = slotInfo.defaultFormantShift
+            self.vc.vcmodel.settings.indexRatio = slotInfo.defaultIndexRatio
+
+        self.modelSlotManager.save_model_slot(val, slotInfo)
 
     def setRunning(self, running: bool):
         if (self.audio is not None) == running:
@@ -343,8 +376,10 @@ def main():
     app.setOrganizationName("AVocOrg")
     app.setApplicationName("AVoc")
 
+    iconFilePath = os.path.join(os.path.dirname(__file__), "AVoc.svg")
+
     icon = QIcon()
-    icon.addFile(os.path.join(os.path.dirname(__file__), "AVoc.svg"))
+    icon.addFile(iconFilePath)
 
     app.setWindowIcon(icon)
 
@@ -365,6 +400,15 @@ def main():
     timer.start(250)
     timer.timeout.connect(lambda: None)  # Let the interpreter run each 250 ms.
 
+    window = MainWindow()
+    window.setWindowTitle("AVoc")
+
+    splash = QSplashScreen(QPixmap(iconFilePath))
+    splash.show()  # Order is important.
+    window.show()  # Order is important. And calling window.show() is important.
+    window.hide()
+    app.processEvents()
+
     # Set the path where the voice models are stored and pretrained weights are loaded.
     appLocalDataLocation = QStandardPaths.writableLocation(
         QStandardPaths.StandardLocation.AppLocalDataLocation
@@ -372,37 +416,65 @@ def main():
     if appLocalDataLocation == "":
         raise FailedToSetModelDirException
 
+    # Check or download models that used internally by the algorithm.
     pretrainDir = os.path.join(appLocalDataLocation, PRETRAIN_DIR_NAME)
     asyncio.run(downloadWeight(pretrainDir))
 
-    window = MainWindow(os.path.join(appLocalDataLocation, MODEL_DIR_NAME))
-    window.setWindowTitle("AVoc")
+    # Lay out the window.
+    window.initialize(os.path.join(appLocalDataLocation, MODEL_DIR_NAME))
 
+    # Create the voice changer and connect it to the controls.
+    window.vcm = VoiceChangerManager(window.windowAreaWidget.modelDir, pretrainDir)
+    window.windowAreaWidget.startButton.toggled.connect(
+        lambda checked: window.vcm.setRunning(checked)
+    )
+
+    modelSettingsGroupBox = window.windowAreaWidget.modelSettingsGroupBox
+
+    def onModelSettingsChanged():
+        window.vcm.setModelSettings(
+            pitch=modelSettingsGroupBox.pitchSpinBox.value(),
+            formantShift=modelSettingsGroupBox.formantShiftDoubleSpinBox.value(),
+            index=modelSettingsGroupBox.indexDoubleSpinBox.value(),
+        )
+
+    modelSettingsGroupBox.changed.connect(onModelSettingsChanged)
+
+    def onVoiceCardChanged():
+        modelSettingsGroupBox.changed.disconnect(onModelSettingsChanged)
+        window.vcm.initialize()
+        modelSettingsGroupBox.changed.connect(onModelSettingsChanged)
+
+    def onModelSettingsLoaded(pitch: int, formantShift: float, index: float):
+        modelSettingsGroupBox.pitchSpinBox.setValue(pitch)
+        modelSettingsGroupBox.formantShiftDoubleSpinBox.setValue(formantShift)
+        modelSettingsGroupBox.indexDoubleSpinBox.setValue(index)
+
+    window.vcm.modelSettingsLoaded.connect(onModelSettingsLoaded)
+
+    window.windowAreaWidget.voiceCards.currentRowChanged.connect(onVoiceCardChanged)
+    window.windowAreaWidget.voiceCards.droppedModelFiles.connect(
+        lambda loadModelParams: window.vcm.importModel(loadModelParams)
+    )
+    window.windowAreaWidget.voiceCards.droppedIconFile.connect(
+        lambda slot, iconFile: window.vcm.setModelIcon(slot, iconFile)
+    )
+    window.vcm.modelUpdated.connect(
+        lambda slot: window.windowAreaWidget.voiceCards.onVoiceCardUpdated(slot),
+    )
+
+    audioSettingsGroupBox = window.windowAreaWidget.audioSettingsGroupBox
+    audioSettingsGroupBox.sampleRateComboBox.currentIndexChanged.connect(
+        lambda: window.vcm.initialize()
+    )  # It isn't running when changing sample rate.
+
+    # Load the current voice model if any.
     if not clParser.isSet(noModelLoadOption):
-        window.vcm = VoiceChangerManager(window.windowAreaWidget.modelDir, pretrainDir)
-        window.windowAreaWidget.startButton.toggled.connect(
-            lambda checked: window.vcm.setRunning(checked)
-        )
-        window.windowAreaWidget.voiceCards.currentRowChanged.connect(
-            lambda: window.vcm.initialize()
-        )
-        window.windowAreaWidget.voiceCards.droppedModelFiles.connect(
-            lambda loadModelParams: window.vcm.importModel(loadModelParams)
-        )
-        window.windowAreaWidget.voiceCards.droppedIconFile.connect(
-            lambda slot, iconFile: window.vcm.setModelIcon(slot, iconFile)
-        )
-        window.vcm.modelUpdated.connect(
-            lambda slot: window.windowAreaWidget.voiceCards.onVoiceCardUpdated(slot),
-        )
-        (
-            (
-                window.windowAreaWidget.audioSettingsGroupBox.sampleRateComboBox
-                # Lots of parenthesis because black code formatter doesn't break lines.
-            ).currentIndexChanged.connect(lambda: window.vcm.initialize())
-        )  # It isn't running when changing sample rate.
+        window.vcm.initialize()
 
+    # Show the window
     window.resize(1980, 1080)  # TODO: store interface dimensions
     window.show()
+    splash.finish(window)
 
     sys.exit(app.exec())

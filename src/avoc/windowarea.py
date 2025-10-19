@@ -16,8 +16,6 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QListView,
@@ -25,7 +23,6 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
-    QSlider,
     QVBoxLayout,
     QWidget,
 )
@@ -33,6 +30,7 @@ from voiceconversion.utils.LoadModelParams import LoadModelParamFile, LoadModelP
 
 from .audiosettings import AudioSettingsGroupBox
 from .exceptions import FailedToMoveVoiceCardException
+from .modelsettings import ModelSettingsGroupBox
 
 VOICE_CARD_SIZE = QSize(188, 262)
 VOICE_CARD_MARGIN = 8
@@ -80,23 +78,8 @@ class WindowAreaWidget(QWidget):
         self.audioSettingsGroupBox = AudioSettingsGroupBox()
         controlsLayout.addWidget(self.audioSettingsGroupBox, stretch=3)
 
-        modelSettingsGroupBox = QGroupBox("Settings for the Active Voice Model")
-        modelSettingsGroupBox.setEnabled(False)  # TODO: implement
-        modelSettingsLayout = QGridLayout()
-        row = 0
-        pitchSlider = QSlider(Qt.Orientation.Horizontal)
-        modelSettingsLayout.addWidget(QLabel("Pitch"), row, 0)
-        modelSettingsLayout.addWidget(pitchSlider, row, 1)
-        row += 1
-        formantShiftSlider = QSlider(Qt.Orientation.Horizontal)
-        modelSettingsLayout.addWidget(QLabel("Formant Shift"), row, 0)
-        modelSettingsLayout.addWidget(formantShiftSlider, row, 1)
-        row += 1
-        indexSlider = QSlider(Qt.Orientation.Horizontal)
-        modelSettingsLayout.addWidget(QLabel("Index"), row, 0)
-        modelSettingsLayout.addWidget(indexSlider, row, 1)
-        modelSettingsGroupBox.setLayout(modelSettingsLayout)
-        controlsLayout.addWidget(modelSettingsGroupBox, stretch=1)
+        self.modelSettingsGroupBox = ModelSettingsGroupBox()
+        controlsLayout.addWidget(self.modelSettingsGroupBox, stretch=1)
 
         self.startButton = QPushButton(START_TXT)
         # Make the Start button size fixed.

@@ -62,20 +62,14 @@ class AudioSettingsGroupBox(QGroupBox):
                 SAMPLE_RATES.index(DEFAULT_SAMPLE_RATE)
             )
 
-        self.sampleRateComboBox.currentIndexChanged.connect(
-            lambda index: self.audioInputComboBox.refreshDeviceOptions(
-                SAMPLE_RATES[index]
-            ),
-            self.audioOutputComboBox.refreshDeviceOptions(SAMPLE_RATES[index]),
-        )
+        def onCurrentIndexChanged(index: int):
+            self.audioInputComboBox.refreshDeviceOptions(SAMPLE_RATES[index])
+            self.audioOutputComboBox.refreshDeviceOptions(SAMPLE_RATES[index])
+
+        self.sampleRateComboBox.currentIndexChanged.connect(onCurrentIndexChanged)
 
         # Load the device lists.
-        self.audioInputComboBox.refreshDeviceOptions(
-            self.sampleRateComboBox.currentIndex()
-        )
-        self.audioOutputComboBox.refreshDeviceOptions(
-            self.sampleRateComboBox.currentIndex()
-        )
+        onCurrentIndexChanged(self.sampleRateComboBox.currentIndex())
 
         # Restore the input device from saved settings.
         self.audioInputComboBox.restoreFromSavedSetting(
