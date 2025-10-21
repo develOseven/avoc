@@ -18,7 +18,15 @@ from PySide6.QtCore import (
     Signal,
 )
 from PySide6.QtGui import QAction, QIcon, QPixmap
-from PySide6.QtWidgets import QApplication, QMainWindow, QSplashScreen, QSystemTrayIcon
+from PySide6.QtWidgets import (
+    QApplication,
+    QLabel,
+    QMainWindow,
+    QMenu,
+    QSplashScreen,
+    QStackedWidget,
+    QSystemTrayIcon,
+)
 from PySide6_GlobalHotkeys import Listener, bindHotkeys
 from voiceconversion.common.deviceManager.DeviceManager import DeviceManager
 from voiceconversion.downloader.WeightDownloader import (
@@ -36,6 +44,7 @@ from voiceconversion.VoiceChangerSettings import VoiceChangerSettings
 from voiceconversion.VoiceChangerV2 import VoiceChangerV2
 
 from .audio import Audio
+from .customizeui import CustomizeUiWidget
 from .exceptions import (
     FailedToSetModelDirException,
     PipelineNotInitializedException,
@@ -66,8 +75,28 @@ DISABLE_PASS_THROUGH_KEYBIND_ID = "disable_pass_through"
 
 class MainWindow(QMainWindow):
     def initialize(self, modelDir: str):
+        centralWidget = QStackedWidget()
+        self.setCentralWidget(centralWidget)
+
         self.windowAreaWidget = WindowAreaWidget(modelDir)
-        self.setCentralWidget(self.windowAreaWidget)
+        centralWidget.addWidget(self.windowAreaWidget)
+
+        self.customizeUiWidget = CustomizeUiWidget()
+
+        preferencesMenu = self.menuBar().addMenu("Preferences")
+
+        custumizeUiAction = QAction("Customize...", self)
+        custumizeUiAction.triggered.connect(
+            lambda: centralWidget.setCurrentWidget(self.customizeUiWidget)
+        )
+        self.customizeUiWidget.back.connect(
+            lambda: centralWidget.setCurrentWidget(self.windowAreaWidget)
+        )
+        centralWidget.addWidget(self.customizeUiWidget)
+
+        centralWidget.setCurrentWidget(self.windowAreaWidget)
+
+        preferencesMenu.addAction(custumizeUiAction)
 
         def onVoiceCardHotkey(shortcutId: str):
             if shortcutId.startswith(VOICE_CARD_KEYBIND_ID_PREFIX):
@@ -88,7 +117,7 @@ class MainWindow(QMainWindow):
         self.hotkeyListener = Listener()
         self.hotkeyListener.hotkeyPressed.connect(onVoiceCardHotkey)
 
-        configureKeybindingsAction = QAction("Configure Keybindings", self)
+        configureKeybindingsAction = QAction("Configure Keybindings...", self)
         configureKeybindingsAction.triggered.connect(
             lambda: bindHotkeys(
                 [
@@ -115,8 +144,22 @@ class MainWindow(QMainWindow):
             )
         )
 
-        preferencesMenu = self.menuBar().addMenu("Preferences")
         preferencesMenu.addAction(configureKeybindingsAction)
+
+        self.systemTrayIcon = QSystemTrayIcon(self.windowIcon(), self)
+        systemTrayMenu = QMenu()
+        activateWindowAction = QAction("Show AVoc", self)
+        activateWindowAction.triggered.connect(
+            lambda: self.windowHandle().requestActivate()
+        )
+        quitAction = QAction("Quit AVoc", self)
+        quitAction.triggered.connect(lambda: QApplication.quit())
+        systemTrayMenu.addActions([activateWindowAction, configureKeybindingsAction])
+        systemTrayMenu.addSeparator()
+        systemTrayMenu.addAction(quitAction)
+        self.systemTrayIcon.setContextMenu(systemTrayMenu)
+        self.systemTrayIcon.setToolTip(self.windowTitle())
+        self.systemTrayIcon.show()
 
         self.vcm: VoiceChangerManager | None = (
             None  # TODO: remove the no-model-load CLI arg
@@ -128,12 +171,8 @@ class MainWindow(QMainWindow):
         else:
             super().keyPressEvent(event)
 
-    def showTrayMessage(self):
-        systemTrayIcon = QSystemTrayIcon(self)
-        systemTrayIcon.show()
-        systemTrayIcon.showMessage(
-            "Title", "msg", QSystemTrayIcon.MessageIcon.Warning, 1000
-        )
+    def showTrayMessage(self, title: str, msg: str, icon: QIcon | QPixmap):
+        self.systemTrayIcon.showMessage(title, msg, icon, 1000)
 
 
 class VoiceChangerManager(QObject):
@@ -466,10 +505,23 @@ def main():
 
     modelSettingsGroupBox.changed.connect(onModelSettingsChanged)
 
-    def onVoiceCardChanged():
+    interfaceSettings = QSettings()
+    interfaceSettings.beginGroup("Interface")
+
+    def onVoiceCardChanged() -> None:
         modelSettingsGroupBox.changed.disconnect(onModelSettingsChanged)
         window.vcm.initialize()
         modelSettingsGroupBox.changed.connect(onModelSettingsChanged)
+        if bool(interfaceSettings.value("showNotifications", True)):
+            voiceCardWidget: QLabel = window.windowAreaWidget.voiceCards.itemWidget(
+                window.windowAreaWidget.voiceCards.currentItem()
+            )
+            pixmap = voiceCardWidget.pixmap()
+            window.showTrayMessage(
+                window.windowTitle(),
+                f"Switched to {voiceCardWidget.toolTip()}",
+                pixmap,
+            )
 
     def onModelSettingsLoaded(pitch: int, formantShift: float, index: float):
         modelSettingsGroupBox.pitchSpinBox.setValue(pitch)

@@ -54,8 +54,10 @@ def voiceCardForSlot(modelDir: str, row: int) -> QWidget:
             name = params.get("name", name)
             if iconFileName:
                 pixmap = QPixmap(os.path.join(modelDir, folder, iconFileName))
+                basename = os.path.splitext(os.path.basename(iconFileName))[0]
                 label = QLabel()
                 label.setPixmap(cropCenterScalePixmap(pixmap, VOICE_CARD_SIZE))
+                label.setToolTip(basename)
                 return label
     return VoiceCardPlaceholderWidget(
         VOICE_CARD_SIZE, f"{name}<br><br>{DROP_ICON_FILE}"

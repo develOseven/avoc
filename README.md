@@ -15,7 +15,7 @@ Drag your voice model files into the window.
 - [X] Import of the voice models provided by the user
 - [X] Switching between voices
 - [X] Pitch adjustments
-- [ ] Hotkeys and popup notifications for the ease of use in the background
+- [X] Hotkeys and popup notifications for the ease of use in the background
 - [X] Pass Through
 
 # Platforms
