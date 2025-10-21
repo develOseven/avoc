@@ -17,6 +17,7 @@ class AudioFilter(QIODevice):
     ):
         super().__init__(parent)
 
+        self.passThrough = False
         self.inputDevice = inputDevice
         self.inputDevice.readyRead.connect(self.onReadyRead)
         self.changeVoice = changeVoice
@@ -31,6 +32,11 @@ class AudioFilter(QIODevice):
         self.audioInBuff = np.append(
             self.audioInBuff, np.frombuffer(bytes(data), dtype=np.float32)
         )
+
+        if self.passThrough:
+            result = self.audioInBuff
+            self.audioInBuff = np.empty(0, dtype=np.float32)
+            return result.astype(np.float32).tobytes()
 
         while len(self.audioInBuff) >= self.blockSamplesCount:
             block = self.audioInBuff[: self.blockSamplesCount]

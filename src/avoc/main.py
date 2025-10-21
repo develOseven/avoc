@@ -60,6 +60,9 @@ logger = logging.getLogger(__name__)
 # The IDs to talk with the keybindings configurator about the voice cards.
 VOICE_CARD_KEYBIND_ID_PREFIX = "voice_card_"
 
+ENABLE_PASS_THROUGH_KEYBIND_ID = "enable_pass_through"
+DISABLE_PASS_THROUGH_KEYBIND_ID = "disable_pass_through"
+
 
 class MainWindow(QMainWindow):
     def initialize(self, modelDir: str):
@@ -77,6 +80,10 @@ class MainWindow(QMainWindow):
                         and row >= 0
                     ):
                         self.windowAreaWidget.voiceCards.setCurrentRow(row)
+            elif shortcutId == ENABLE_PASS_THROUGH_KEYBIND_ID:
+                self.windowAreaWidget.passThroughButton.setChecked(True)
+            elif shortcutId == DISABLE_PASS_THROUGH_KEYBIND_ID:
+                self.windowAreaWidget.passThroughButton.setChecked(False)
 
         self.hotkeyListener = Listener()
         self.hotkeyListener.hotkeyPressed.connect(onVoiceCardHotkey)
@@ -94,6 +101,16 @@ class MainWindow(QMainWindow):
                         self.windowAreaWidget.voiceCards.count(),  # 1 placeholder card
                         1,
                     )
+                ]
+                + [
+                    (
+                        ENABLE_PASS_THROUGH_KEYBIND_ID,
+                        {"description": "Enable Pass Through"},
+                    ),
+                    (
+                        DISABLE_PASS_THROUGH_KEYBIND_ID,
+                        {"description": "Disable Pass Through"},
+                    ),
                 ],
             )
         )
@@ -257,7 +274,7 @@ class VoiceChangerManager(QObject):
 
         self.modelSlotManager.save_model_slot(val, slotInfo)
 
-    def setRunning(self, running: bool):
+    def setRunning(self, running: bool, passThrough: bool):
         if (self.audio is not None) == running:
             return
 
@@ -272,6 +289,7 @@ class VoiceChangerManager(QObject):
                 voiceChangerSettings.serverReadChunkSize * 128,
                 self.changeVoice,
             )  # TODO: pass settings
+            self.audio.voiceChangerFilter.passThrough = passThrough
         else:
             self.audio = None
 
@@ -426,8 +444,16 @@ def main():
     # Create the voice changer and connect it to the controls.
     window.vcm = VoiceChangerManager(window.windowAreaWidget.modelDir, pretrainDir)
     window.windowAreaWidget.startButton.toggled.connect(
-        lambda checked: window.vcm.setRunning(checked)
+        lambda checked: window.vcm.setRunning(
+            checked, window.windowAreaWidget.passThroughButton.isChecked()
+        )
     )
+
+    def setPassThrough(passThrough: bool):
+        if window.vcm.audio is not None:
+            window.vcm.audio.voiceChangerFilter.passThrough = passThrough
+
+    window.windowAreaWidget.passThroughButton.toggled.connect(setPassThrough)
 
     modelSettingsGroupBox = window.windowAreaWidget.modelSettingsGroupBox
 

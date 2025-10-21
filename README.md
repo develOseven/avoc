@@ -16,7 +16,7 @@ Drag your voice model files into the window.
 - [X] Switching between voices
 - [X] Pitch adjustments
 - [ ] Hotkeys and popup notifications for the ease of use in the background
-- [ ] Pass Through
+- [X] Pass Through
 
 # Platforms
 

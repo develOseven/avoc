@@ -40,6 +40,7 @@ DROP_MODEL_FILES = "Drop model files here<br><b>*.pth</b> and <b>*.index</b><br>
 DROP_ICON_FILE = "Drop icon file here<br><b>*.png</b>, <b>*.jpeg</b>, <b>*.gif</b>..."
 START_TXT = "Start"
 RUNNING_TXT = "Running..."
+PASS_THROUGH_TXT = "Pass Through"
 
 
 def voiceCardForSlot(modelDir: str, row: int) -> QWidget:
@@ -67,6 +68,9 @@ class WindowAreaWidget(QWidget):
 
         self.modelDir = modelDir
 
+        settings = QSettings()
+        settings.beginGroup("Interface")
+
         layout = QVBoxLayout()
 
         self.voiceCards = VoiceCardsContainer(modelDir)
@@ -81,13 +85,19 @@ class WindowAreaWidget(QWidget):
         self.modelSettingsGroupBox = ModelSettingsGroupBox()
         controlsLayout.addWidget(self.modelSettingsGroupBox, stretch=1)
 
+        buttonsLayout = QVBoxLayout()
+
         self.startButton = QPushButton(START_TXT)
-        # Make the Start button size fixed.
         fm = QFontMetrics(self.startButton.font())
-        maxStartButtonWidth = int(
-            max(fm.horizontalAdvance(t) for t in [START_TXT, RUNNING_TXT]) * 1.618
+        maxButtonWidth = int(
+            max(
+                fm.horizontalAdvance(t)
+                for t in [START_TXT, RUNNING_TXT, PASS_THROUGH_TXT]
+            )
+            * 1.618
         )
-        self.startButton.setMinimumWidth(maxStartButtonWidth)
+        # Make the Start button size fixed.
+        self.startButton.setMinimumWidth(maxButtonWidth)
         # Make the Start button toggle and change text when clicked.
         self.startButton.setCheckable(True)
         self.startButton.toggled.connect(
@@ -108,7 +118,18 @@ class WindowAreaWidget(QWidget):
         self.startButton.toggled.connect(
             lambda checked: self.audioSettingsGroupBox.setEnabled(not checked)
         )
-        controlsLayout.addWidget(self.startButton)
+        buttonsLayout.addWidget(self.startButton)
+
+        self.passThroughButton = QPushButton(PASS_THROUGH_TXT)
+        self.passThroughButton.setMinimumWidth(maxButtonWidth)
+        self.passThroughButton.setCheckable(True)
+        self.passThroughButton.setChecked(bool(settings.value("passThrough", False)))
+        self.passThroughButton.toggled.connect(
+            lambda checked: settings.setValue("passThrough", checked)
+        )
+        buttonsLayout.addWidget(self.passThroughButton)
+
+        controlsLayout.addLayout(buttonsLayout)
 
         layout.addLayout(controlsLayout, stretch=1)
 
@@ -133,9 +154,6 @@ class WindowAreaWidget(QWidget):
         )
 
         self.voiceCards.model().rowsMoved.connect(self.rearrangeVoiceModelDirs)
-
-        settings = QSettings()
-        settings.beginGroup("Interface")
 
         self.voiceCards.setCurrentRow(int(settings.value("currentVoiceCardIndex", 0)))
         self.voiceCards.currentRowChanged.connect(
