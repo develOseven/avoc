@@ -25,27 +25,33 @@ class AudioFilter(QIODevice):
         self.blockSamplesCount = blockSamplesCount
 
     def readData(self, maxlen: int) -> object:
-        data: QByteArray = self.inputDevice.read(maxlen)
-
-        result = np.empty(0, dtype=np.float32)
+        if maxlen == 0:
+            return b""
 
         self.audioInBuff = np.append(
-            self.audioInBuff, np.frombuffer(bytes(data), dtype=np.float32)
+            self.audioInBuff,
+            np.frombuffer(self.inputDevice.read(maxlen), dtype=np.float32),
         )
+
+        # Use the device buffer limit as an opportunity to catch up.
+        self.audioInBuff = self.audioInBuff[-maxlen // 4 :]
+
+        result = np.empty(0, dtype=np.float32)
 
         if self.passThrough:
             result = self.audioInBuff
             self.audioInBuff = np.empty(0, dtype=np.float32)
-            return result.astype(np.float32).tobytes()
+            return result.tobytes()
 
-        while len(self.audioInBuff) >= self.blockSamplesCount:
-            block = self.audioInBuff[: self.blockSamplesCount]
-            self.audioInBuff = self.audioInBuff[self.blockSamplesCount :]
+        blockCount = len(self.audioInBuff) // self.blockSamplesCount
 
-            out_wav, _, _, _ = self.changeVoice(block)
+        for blockIndex in range(0, blockCount):
+            bs = blockIndex * self.blockSamplesCount
+            be = bs + self.blockSamplesCount
+            out_wav, _, _, _ = self.changeVoice(self.audioInBuff[bs:be])
             result = np.append(result, out_wav)
 
-        return result.astype(np.float32).tobytes()
+        return result.tobytes()
 
     def isSequential(self) -> bool:
         return self.inputDevice.isSequential()
@@ -55,7 +61,7 @@ class AudioFilter(QIODevice):
             self.readyRead.emit()
 
     def bytesAvailable(self) -> int:
-        srcBytesCount = len(self.audioInBuff) + self.inputDevice.bytesAvailable()
+        srcBytesCount = len(self.audioInBuff) * 4 + self.inputDevice.bytesAvailable()
         available = srcBytesCount - srcBytesCount % (self.blockSamplesCount * 4)
         return available
 
