@@ -125,7 +125,9 @@ class WindowAreaWidget(QWidget):
         self.passThroughButton = QPushButton(PASS_THROUGH_TXT)
         self.passThroughButton.setMinimumWidth(maxButtonWidth)
         self.passThroughButton.setCheckable(True)
-        self.passThroughButton.setChecked(bool(settings.value("passThrough", False)))
+        passThrough = settings.value("passThrough", False, type=bool)
+        assert type(passThrough) is bool
+        self.passThroughButton.setChecked(passThrough)
         self.passThroughButton.toggled.connect(
             lambda checked: settings.setValue("passThrough", checked)
         )
