@@ -579,6 +579,15 @@ def main():
     # Load the current voice model if any.
     if not clParser.isSet(noModelLoadOption):
         window.vcm.initialize()
+        # Immediately start if it was saved in settings.
+        interfaceSettings = QSettings()
+        interfaceSettings.beginGroup("Interface")
+        running = interfaceSettings.value("running", False, type=bool)
+        assert type(running) is bool
+        window.windowAreaWidget.startButton.setChecked(running)
+        window.windowAreaWidget.startButton.toggled.connect(
+            lambda checked: interfaceSettings.setValue("running", checked)
+        )
 
     # Show the window
     window.resize(1980, 1080)  # TODO: store interface dimensions
