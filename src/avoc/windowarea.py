@@ -31,6 +31,7 @@ from voiceconversion.utils.LoadModelParams import LoadModelParamFile, LoadModelP
 from .audiosettings import AudioSettingsGroupBox
 from .exceptions import FailedToMoveVoiceCardException
 from .modelsettings import ModelSettingsGroupBox
+from .processingsettings import ProcessingSettingsGroupBox
 
 VOICE_CARD_SIZE = QSize(188, 262)
 VOICE_CARD_MARGIN = 8
@@ -83,7 +84,10 @@ class WindowAreaWidget(QWidget):
         controlsLayout = QHBoxLayout()
 
         self.audioSettingsGroupBox = AudioSettingsGroupBox()
-        controlsLayout.addWidget(self.audioSettingsGroupBox, stretch=3)
+        controlsLayout.addWidget(self.audioSettingsGroupBox, stretch=1)
+
+        self.processingSettingsGroupBox = ProcessingSettingsGroupBox()
+        controlsLayout.addWidget(self.processingSettingsGroupBox, stretch=1)
 
         self.modelSettingsGroupBox = ModelSettingsGroupBox()
         controlsLayout.addWidget(self.modelSettingsGroupBox, stretch=1)
@@ -120,6 +124,9 @@ class WindowAreaWidget(QWidget):
         # Can't change audio settings while running.
         self.startButton.toggled.connect(
             lambda checked: self.audioSettingsGroupBox.setEnabled(not checked)
+        )
+        self.startButton.toggled.connect(
+            lambda checked: self.processingSettingsGroupBox.setEnabled(not checked)
         )
         buttonsLayout.addWidget(self.startButton)
 

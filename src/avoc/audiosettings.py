@@ -1,16 +1,31 @@
+from typing import Tuple
+
 from PySide6.QtCore import QByteArray, QSettings
 from PySide6.QtWidgets import QComboBox, QGridLayout, QGroupBox, QLabel, QWidget
 
 from .audiodevices import getAudioDevicesForSampleRate
 
 DEFAULT_SAMPLE_RATE = 48000
-SAMPLE_RATES = (
+SAMPLE_RATES = [
     32000,
     44100,
     48000,
     96000,
     128000,
-)  # TODO: 44100 leads to crashes because the algo resamples to 16k badly
+]
+
+
+def loadSampleRate() -> Tuple[int, int]:
+    """:return: sample rate and its index in the SAMPLE_RATES list"""
+    settings = QSettings()
+    settings.beginGroup("AudioSettings")
+    savedSampleRate = settings.value("sampleRate", DEFAULT_SAMPLE_RATE, type=int)
+    assert type(savedSampleRate) is int
+    try:
+        index = SAMPLE_RATES.index(savedSampleRate)
+    except IndexError:
+        index = DEFAULT_SAMPLE_RATE
+    return SAMPLE_RATES[index], index
 
 
 class AudioSettingsGroupBox(QGroupBox):
@@ -49,18 +64,8 @@ class AudioSettingsGroupBox(QGroupBox):
         for sampleRate in SAMPLE_RATES:
             self.sampleRateComboBox.addItem(str(sampleRate))
 
-        savedSampleRate = settings.value("sampleRate", DEFAULT_SAMPLE_RATE)
-        index = (
-            self.sampleRateComboBox.findText(str(savedSampleRate))
-            if savedSampleRate is not None
-            else -1
-        )
-        if index >= 0:
-            self.sampleRateComboBox.setCurrentIndex(index)
-        else:
-            self.sampleRateComboBox.setCurrentIndex(
-                SAMPLE_RATES.index(DEFAULT_SAMPLE_RATE)
-            )
+        _, index = loadSampleRate()
+        self.sampleRateComboBox.setCurrentIndex(index)
 
         def onCurrentIndexChanged(index: int):
             self.audioInputComboBox.refreshDeviceOptions(SAMPLE_RATES[index])

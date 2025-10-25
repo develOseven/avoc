@@ -5,6 +5,7 @@ import shutil
 import signal
 import sys
 from traceback import format_exc
+from typing import Tuple
 
 import numpy as np
 from PySide6.QtCore import (
@@ -29,6 +30,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6_GlobalHotkeys import Listener, bindHotkeys
 from voiceconversion.common.deviceManager.DeviceManager import DeviceManager
+from voiceconversion.data.ModelSlot import ModelSlots
 from voiceconversion.downloader.WeightDownloader import (
     CONTENT_VEC_500_ONNX,
     downloadWeight,
@@ -49,6 +51,12 @@ from .exceptions import (
     FailedToSetModelDirException,
     PipelineNotInitializedException,
     VoiceChangerIsNotSelectedException,
+)
+from .processingsettings import (
+    DEFAULT_CHUNK_SIZE,
+    DEFAULT_SILENT_THRESHOLD,
+    loadF0Det,
+    loadGpu,
 )
 from .windowarea import WindowAreaWidget
 
@@ -190,16 +198,76 @@ class VoiceChangerManager(QObject):
     def __init__(self, modelDir: str, pretrainDir: str):
         super().__init__()
 
+        self.vc: VoiceChangerV2 | None = None
+
         self.modelDir = modelDir
         self.pretrainDir = pretrainDir
         self.audio: Audio | None = None
 
-        voiceChangerSettings = self.getVoiceChangerSettings()
-        self.passThrough = False
-
         self.modelSlotManager = ModelSlotManager.get_instance(
             self.modelDir, "upload_dir"
         )  # TODO: fix the dir
+
+    def getVoiceChangerSettings(self) -> Tuple[VoiceChangerSettings, ModelSlots | None]:
+        voiceChangerSettings = VoiceChangerSettings()
+        audioSettings = QSettings()
+        audioSettings.beginGroup("AudioSettings")
+        processingSettings = QSettings()
+        processingSettings.beginGroup("ProcessingSettings")
+        gpuIndex, devices = loadGpu()
+        f0DetIndex, f0Detectors = loadF0Det()
+        voiceChangerSettingsDict = {
+            "version": "v1",
+            "inputSampleRate": int(audioSettings.value("sampleRate")),
+            "outputSampleRate": int(audioSettings.value("sampleRate")),
+            "gpu": devices[gpuIndex]["id"],
+            "extraConvertSize": 0.1,
+            "serverReadChunkSize": processingSettings.value(
+                "chunkSize", DEFAULT_CHUNK_SIZE, type=int
+            ),
+            "crossFadeOverlapSize": 0.1,
+            "forceFp32": 0,
+            "disableJit": 0,
+            "enableServerAudio": 1,
+            "exclusiveMode": 0,
+            "asioInputChannel": -1,
+            "asioOutputChannel": -1,
+            "dstId": 0,
+            "f0Detector": f0Detectors[f0DetIndex],
+            "tran": 0,
+            "formantShift": 0.0,
+            "useONNX": 0,
+            "silentThreshold": processingSettings.value(
+                "silentThreshold", DEFAULT_SILENT_THRESHOLD, type=int
+            ),
+            "indexRatio": 0.0,
+            "protect": 0.5,
+            "silenceFront": 1,
+        }
+
+        interfaceSettings = QSettings()
+        interfaceSettings.beginGroup("Interface")
+        modelSlotIndex = interfaceSettings.value("currentVoiceCardIndex", -1, type=int)
+        assert type(modelSlotIndex) is int
+        slotInfo = self.modelSlotManager.get_slot_info(modelSlotIndex)
+
+        if slotInfo is not None:
+            voiceChangerSettingsDict["tran"] = slotInfo.defaultTune
+            voiceChangerSettingsDict["formantShift"] = slotInfo.defaultFormantShift
+            voiceChangerSettingsDict["indexRatio"] = slotInfo.defaultIndexRatio
+            voiceChangerSettingsDict["protect"] = slotInfo.defaultProtect
+        else:
+            logger.warning(f"Model slot is not found {modelSlotIndex}")
+
+        voiceChangerSettings.set_properties(voiceChangerSettingsDict)
+
+        return voiceChangerSettings, slotInfo
+
+    def initialize(self):
+        voiceChangerSettings, slotInfo = self.getVoiceChangerSettings()
+
+        if self.vc is not None and self.vc.settings == voiceChangerSettings:
+            return
 
         self.device_manager = DeviceManager.get_instance()
         self.devices = self.device_manager.list_devices()
@@ -211,60 +279,8 @@ class VoiceChangerManager(QObject):
 
         self.vc = VoiceChangerV2(voiceChangerSettings)
 
-    def getVoiceChangerSettings(self):
-        voiceChangerSettings = VoiceChangerSettings()
-        audioSettings = QSettings()
-        audioSettings.beginGroup("AudioSettings")
-        interfaceSettings = QSettings()
-        interfaceSettings.beginGroup("Interface")
-        voiceChangerSettingsDict = {
-            "version": "v1",
-            "modelSlotIndex": int(interfaceSettings.value("currentVoiceCardIndex", -1)),
-            "inputSampleRate": int(
-                audioSettings.value("sampleRate")
-            ),  # TODO: validation
-            "outputSampleRate": int(
-                audioSettings.value("sampleRate")
-            ),  # TODO: validation
-            "gpu": 0,
-            "extraConvertSize": 0.1,
-            "serverReadChunkSize": 22,
-            "crossFadeOverlapSize": 0.1,
-            "forceFp32": 0,
-            "disableJit": 0,
-            "enableServerAudio": 1,
-            "exclusiveMode": 0,
-            "asioInputChannel": -1,
-            "asioOutputChannel": -1,
-            "dstId": 0,
-            "f0Detector": "rmvpe_onnx",
-            "tran": 6,
-            "formantShift": 0.0,
-            "useONNX": 0,
-            "silentThreshold": -90,
-            "indexRatio": 0.0,
-            "protect": 0.5,
-            "silenceFront": 1,
-        }
-        voiceChangerSettings.set_properties(voiceChangerSettingsDict)
-        return voiceChangerSettings
-
-    def initialize(self):
-        voiceChangerSettings = self.getVoiceChangerSettings()
-        val = voiceChangerSettings.modelSlotIndex
-        slotInfo = self.modelSlotManager.get_slot_info(val)
         if slotInfo is None or slotInfo.voiceChangerType is None:
-            logger.warning(f"Model slot is not found {val}")
             return
-
-        voiceChangerSettings.set_properties(
-            {
-                "tran": slotInfo.defaultTune,
-                "formantShift": slotInfo.defaultFormantShift,
-                "indexRatio": slotInfo.defaultIndexRatio,
-                "protect": slotInfo.defaultProtect,
-            }
-        )
 
         self.modelSettingsLoaded.emit(
             slotInfo.defaultTune,
@@ -301,38 +317,43 @@ class VoiceChangerManager(QObject):
         formantShift: float,
         index: float,
     ):
-        voiceChangerSettings = self.getVoiceChangerSettings()
-        val = voiceChangerSettings.modelSlotIndex
-        slotInfo = self.modelSlotManager.get_slot_info(val)
+        interfaceSettings = QSettings()
+        interfaceSettings.beginGroup("Interface")
+        modelSlotIndex = interfaceSettings.value("currentVoiceCardIndex", -1, type=int)
+        assert type(modelSlotIndex) is int
+        slotInfo = self.modelSlotManager.get_slot_info(modelSlotIndex)
         if slotInfo is None or slotInfo.voiceChangerType is None:
-            logger.warning(f"Model slot is not found {val}")
+            logger.warning(f"Model slot is not found {modelSlotIndex}")
             return
 
         slotInfo.defaultTune = pitch
         slotInfo.defaultFormantShift = formantShift
         slotInfo.defaultIndexRatio = index
 
-        if self.vc.vcmodel is not None:
+        if self.vc is not None and self.vc.vcmodel is not None:
             # TODO: unify changing properties that don't need reinit.
             self.vc.vcmodel.settings.tran = slotInfo.defaultTune
             self.vc.vcmodel.settings.formantShift = slotInfo.defaultFormantShift
             self.vc.vcmodel.settings.indexRatio = slotInfo.defaultIndexRatio
 
-        self.modelSlotManager.save_model_slot(val, slotInfo)
+        self.modelSlotManager.save_model_slot(modelSlotIndex, slotInfo)
 
     def setRunning(self, running: bool, passThrough: bool):
         if (self.audio is not None) == running:
             return
 
         if running:
-            voiceChangerSettings = self.getVoiceChangerSettings()
-            settings = QSettings()
-            settings.beginGroup("AudioSettings")
+            self.initialize()
+            audioSettings = QSettings()
+            audioSettings.beginGroup("AudioSettings")
+            processingSettings = QSettings()
+            processingSettings.beginGroup("ProcessingSettings")
             self.audio = Audio(
-                settings.value("audioInputDevice"),
-                settings.value("audioOutputDevice"),
-                settings.value("sampleRate"),  # TODO: validation
-                voiceChangerSettings.serverReadChunkSize * 128,
+                audioSettings.value("audioInputDevice"),
+                audioSettings.value("audioOutputDevice"),
+                audioSettings.value("sampleRate"),
+                processingSettings.value("chunkSize", DEFAULT_CHUNK_SIZE, type=int)
+                * 128,
                 self.changeVoice,
             )  # TODO: pass settings
             self.audio.voiceChangerFilter.passThrough = passThrough
@@ -342,10 +363,6 @@ class VoiceChangerManager(QObject):
     def changeVoice(
         self, receivedData: AudioInOutFloat
     ) -> tuple[AudioInOutFloat, float, list[int], tuple | None]:
-        if self.passThrough:
-            vol = float(np.sqrt(np.square(receivedData).mean(dtype=np.float32)))
-            return receivedData, vol, [0, 0, 0], None
-
         try:
             with self.device_manager.lock:
                 audio, vol, perf = self.vc.on_request(receivedData)
@@ -491,7 +508,8 @@ def main():
     window.vcm = VoiceChangerManager(window.windowAreaWidget.modelDir, pretrainDir)
     window.windowAreaWidget.startButton.toggled.connect(
         lambda checked: window.vcm.setRunning(
-            checked, window.windowAreaWidget.passThroughButton.isChecked()
+            checked,
+            window.windowAreaWidget.passThroughButton.isChecked(),
         )
     )
 

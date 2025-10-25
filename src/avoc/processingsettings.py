@@ -1,0 +1,185 @@
+from typing import Tuple, get_args
+
+from PySide6.QtCore import QEvent, QPoint, QSettings, Qt
+from PySide6.QtWidgets import (
+    QComboBox,
+    QGridLayout,
+    QGroupBox,
+    QLabel,
+    QSlider,
+    QSpinBox,
+    QWidget,
+)
+from voiceconversion.common.deviceManager.DeviceManager import (
+    DeviceManager,
+    DevicePresentation,
+)
+from voiceconversion.const import PitchExtractorType
+
+from .audiosettings import loadSampleRate
+from .handletooltipslider import HandleToolTipSlider
+
+F0_DET_PREFERENCES = [
+    "rmvpe_onnx",
+    "rmvpe",
+    "crepe_full_onnx",
+    "crepe_full",
+    "crepe_tiny_onnx",
+    "crepe_tiny",
+    "fcpe_onnx",
+    "fcpe",
+]
+BACKEND_PREFERENCES = ["cuda", "directml", "mps", "cpu"]
+DEFAULT_SILENT_THRESHOLD = -90
+DEFAULT_CHUNK_SIZE = 22
+
+
+def getF0DetByPreference() -> list[str]:
+    return sorted(
+        get_args(PitchExtractorType),
+        key=lambda d: (
+            F0_DET_PREFERENCES.index(d)
+            if d in F0_DET_PREFERENCES
+            else len(F0_DET_PREFERENCES)
+        ),
+    )
+
+
+def loadF0Det() -> Tuple[int, list[str]]:
+    """:return: f0 detector index and the list of all"""
+    processingSettings = QSettings()
+    processingSettings.beginGroup("ProcessingSettings")
+    f0DetByPreference = getF0DetByPreference()
+    f0Det = processingSettings.value("f0Det", f0DetByPreference[0], type=str)
+    assert type(f0Det) is str
+    try:
+        index = f0DetByPreference.index(f0Det)
+    except ValueError:
+        index = 0
+    return index, f0DetByPreference
+
+
+def loadGpu() -> Tuple[int, DevicePresentation]:
+    """:return: GPU index (not id) from settings, all devices sorted by preference"""
+    processingSettings = QSettings()
+    processingSettings.beginGroup("ProcessingSettings")
+    devicesByPreference = sorted(
+        DeviceManager.get_instance().list_devices(),
+        key=lambda d: (
+            BACKEND_PREFERENCES.index(d["backend"])
+            if d["backend"] in BACKEND_PREFERENCES
+            else len(BACKEND_PREFERENCES)
+        ),
+    )
+    gpu = processingSettings.value("gpu", devicesByPreference[0]["name"], type=str)
+    assert type(gpu) is str
+    try:
+        index = next(i for i, d in enumerate(devicesByPreference) if d["name"] == gpu)
+    except StopIteration:
+        index = 0
+    return index, devicesByPreference
+
+
+class ProcessingSettingsGroupBox(QGroupBox):
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+
+        self.setTitle("Processing Settings")
+
+        processingSettingsLayout = QGridLayout()
+        row = 0
+        f0DetLabel = QLabel("F0 Detector")
+        f0DetLabel.setToolTip("A pitch extraction algorithm.")
+        self.f0DetComboBox = QComboBox()
+        f0DetIndex, f0DetByPreference = loadF0Det()
+        self.f0DetComboBox.addItems(f0DetByPreference)
+        processingSettingsLayout.addWidget(f0DetLabel, row, 0)
+        processingSettingsLayout.addWidget(self.f0DetComboBox, row, 1, 1, 2)
+        row += 1
+        silentThresholdLabel = QLabel("Input sensitivity")
+        silentThresholdLabel.setToolTip(
+            "The input volume required to activate the voice changer."
+        )
+        silentThresholdSlider = QSlider(Qt.Orientation.Horizontal)
+        self.silentThresholdSpinBox = QSpinBox(minimum=-90, maximum=-60)
+        silentThresholdSlider.setMinimum(self.silentThresholdSpinBox.minimum())
+        silentThresholdSlider.setMaximum(self.silentThresholdSpinBox.maximum())
+        silentThresholdSlider.valueChanged.connect(
+            lambda v: self.silentThresholdSpinBox.setValue(v)
+        )
+        self.silentThresholdSpinBox.valueChanged.connect(
+            lambda v: silentThresholdSlider.setValue(v)
+        )
+        processingSettingsLayout.addWidget(silentThresholdLabel, row, 0)
+        processingSettingsLayout.addWidget(silentThresholdSlider, row, 1)
+        processingSettingsLayout.addWidget(self.silentThresholdSpinBox, row, 2)
+        row += 1
+        chunkSizeLabel = QLabel("Chunk Size")
+        chunkSizeLabel.setToolTip(
+            "Controls the delay and GPU usage. Bigger chunk - more delay, less GPU usage. Smaller chunk - vice versa."  # noqa: E501
+        )
+        chunkSizeSlider = HandleToolTipSlider(
+            Qt.Orientation.Horizontal,
+            formatToolTip=lambda v: f"{v*128*1000/loadSampleRate()[0]:.2f} ms",
+        )
+        self.chunkSizeSpinBox = QSpinBox(minimum=8, maximum=256)
+        chunkSizeSlider.setMinimum(self.chunkSizeSpinBox.minimum())
+        chunkSizeSlider.setMaximum(self.chunkSizeSpinBox.maximum())
+        chunkSizeSlider.valueChanged.connect(
+            lambda v: self.chunkSizeSpinBox.setValue(v)
+        )
+        self.chunkSizeSpinBox.valueChanged.connect(
+            lambda v: chunkSizeSlider.setValue(v)
+        )
+        processingSettingsLayout.addWidget(chunkSizeLabel, row, 0)
+        processingSettingsLayout.addWidget(chunkSizeSlider, row, 1)
+        processingSettingsLayout.addWidget(self.chunkSizeSpinBox, row, 2)
+        row += 1
+        gpuLabel = QLabel("Computing Device")
+        gpuLabel.setToolTip(
+            "A device like a GPU (Graphics Processing Unit) to use for the voice conversion."  # noqa: E501
+        )
+        self.gpuComboBox = QComboBox()
+        gpuIndex, devicesByPreference = loadGpu()
+        self.gpuComboBox.addItems([d["name"] for d in devicesByPreference])
+        processingSettingsLayout.addWidget(gpuLabel, row, 0)
+        processingSettingsLayout.addWidget(self.gpuComboBox, row, 1, 1, 2)
+
+        self.setLayout(processingSettingsLayout)
+
+        # Restore from saved settings.
+
+        processingSettings = QSettings()
+        processingSettings.beginGroup("ProcessingSettings")
+
+        self.f0DetComboBox.setCurrentIndex(f0DetIndex)
+
+        self.f0DetComboBox.currentTextChanged.connect(
+            lambda text: processingSettings.setValue("f0Det", text)
+        )
+
+        silentThreshold = processingSettings.value(
+            "silentThreshold", DEFAULT_SILENT_THRESHOLD, type=int
+        )
+        assert type(silentThreshold) is int
+        self.silentThresholdSpinBox.setValue(silentThreshold)
+
+        self.silentThresholdSpinBox.valueChanged.connect(
+            lambda silentThreshold: processingSettings.setValue(
+                "silentThreshold", silentThreshold
+            )
+        )
+
+        chunkSize = processingSettings.value("chunkSize", DEFAULT_CHUNK_SIZE, type=int)
+        assert type(chunkSize) is int
+        self.chunkSizeSpinBox.setValue(chunkSize)
+
+        self.chunkSizeSpinBox.valueChanged.connect(
+            lambda chunkSize: processingSettings.setValue("chunkSize", chunkSize)
+        )
+
+        self.gpuComboBox.setCurrentIndex(gpuIndex)
+
+        self.gpuComboBox.currentTextChanged.connect(
+            lambda text: processingSettings.setValue("gpu", text)
+        )
