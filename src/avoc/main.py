@@ -171,8 +171,15 @@ class MainWindow(QMainWindow):
         else:
             super().keyPressEvent(event)
 
-    def showTrayMessage(self, title: str, msg: str, icon: QIcon | QPixmap):
-        self.systemTrayIcon.showMessage(title, msg, icon, 1000)
+    def showTrayMessage(
+        self, title: str, msg: str, icon: QIcon | QPixmap | None = None
+    ):
+        if icon is not None:
+            self.systemTrayIcon.showMessage(title, msg, icon, 1000)
+        else:
+            self.systemTrayIcon.showMessage(
+                title, msg, QSystemTrayIcon.MessageIcon.Information, 1000
+            )
 
 
 class VoiceChangerManager(QObject):
@@ -490,7 +497,12 @@ def main():
 
     def setPassThrough(passThrough: bool):
         if window.vcm.audio is not None:
-            window.vcm.audio.voiceChangerFilter.passThrough = passThrough
+            if window.vcm.audio.voiceChangerFilter.passThrough != passThrough:
+                window.vcm.audio.voiceChangerFilter.passThrough = passThrough
+                window.showTrayMessage(
+                    window.windowTitle(),
+                    f"Pass Through {"On" if passThrough else "Off"}",
+                )
 
     window.windowAreaWidget.passThroughButton.toggled.connect(setPassThrough)
 

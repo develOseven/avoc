@@ -45,23 +45,24 @@ PASS_THROUGH_TXT = "Pass Through"
 
 def voiceCardForSlot(modelDir: str, row: int) -> QWidget:
     folder = str(row)
+    name = UNKNOWN_MODEL_NAME
     paramsFilePath = os.path.join(modelDir, folder, "params.json")
     if os.path.exists(paramsFilePath):
-        name = UNKNOWN_MODEL_NAME
         with open(paramsFilePath) as f:
             params = json.load(f)
             iconFileName = params.get("iconFile", "")
             name = params.get("name", name)
             if iconFileName:
                 pixmap = QPixmap(os.path.join(modelDir, folder, iconFileName))
-                basename = os.path.splitext(os.path.basename(iconFileName))[0]
                 label = QLabel()
                 label.setPixmap(cropCenterScalePixmap(pixmap, VOICE_CARD_SIZE))
-                label.setToolTip(basename)
+                label.setToolTip(name)
                 return label
-    return VoiceCardPlaceholderWidget(
+    widget = VoiceCardPlaceholderWidget(
         VOICE_CARD_SIZE, f"{name}<br><br>{DROP_ICON_FILE}"
     )
+    widget.setToolTip(name)
+    return widget
 
 
 class WindowAreaWidget(QWidget):
@@ -408,6 +409,9 @@ class VoiceCardPlaceholderWidget(QWidget):
 
     def sizeHint(self):
         return self.cardSize
+
+    def pixmap(self) -> QPixmap | None:
+        return None
 
 
 def cropCenterScalePixmap(pixmap: QPixmap, targetSize: QSize) -> QPixmap:
