@@ -152,9 +152,9 @@ attrs==25.4.0 \
     # via
     #   -r requirements-3.12.3.txt
     #   aiohttp
-audioread==3.0.1 \
-    --hash=sha256:4cdce70b8adc0da0a3c9e0d85fb10b3ace30fbdf8d1670fd443929b61d117c33 \
-    --hash=sha256:ac5460a5498c48bdf2e8e767402583a4dcd13f4414d286f42ce4379e8b35066d
+audioread==3.1.0 \
+    --hash=sha256:1c4ab2f2972764c896a8ac61ac53e261c8d29f0c6ccd652f84e18f08a4cab190 \
+    --hash=sha256:b30d1df6c5d3de5dcef0fb0e256f6ea17bdcf5f979408df0297d8a408e2971b4
     # via
     #   -r requirements-3.12.3.txt
     #   librosa
@@ -1612,13 +1612,13 @@ pyside6-essentials==6.10.0 \
     #   -r requirements-3.12.3.txt
     #   pyside6
     #   pyside6-addons
-pyside6-globalhotkeys==0.0.2 \
-    --hash=sha256:2111586845ef552603439a5b487b162adc9f083eb8ce083b7a69a38f81adb4e8 \
-    --hash=sha256:4f98d8116865d58809078cb56ef93d84aac51725e17f270b1976c59fae5d41d6
+pyside6-globalhotkeys==0.0.3 \
+    --hash=sha256:1818096c17cbd9ef85a93483ccabc361b52c3577344fed492f7b9f52205d123d \
+    --hash=sha256:1b099c2feb9a21a368bd57b3b73427c4174ca14f482ce26cd9344bf7fc3a1d2f
     # via -r requirements-3.12.3.txt
-python-dotenv==1.1.1 \
-    --hash=sha256:31f23644fe2602f88ff55e1f5c79ba497e01224ee7737937930c448e4d0e24dc \
-    --hash=sha256:a8a6399716257f45be6a007360200409fce5cda2661e3dec71d23dc15f6189ab
+python-dotenv==1.2.1 \
+    --hash=sha256:42667e897e16ab0d66954af0e60a9caa94f0fd4ecf3aaf6d2d260eec1aa36ad6 \
+    --hash=sha256:b81ee9561e9ca4004139c6cbba3a238c32b03e4894671e181b671e8cb8425d61
     # via
     #   -r requirements-3.12.3.txt
     #   pydantic-settings
@@ -1979,9 +1979,9 @@ urllib3==2.5.0 \
     # via
     #   -r requirements-3.12.3.txt
     #   requests
-voiceconversion==0.0.4 \
-    --hash=sha256:2aa924d712469397f84ac9ab1def7745b0bf4841bb09b20216eff37b3846c98c \
-    --hash=sha256:6e3d3dc4a4787af5ff430f8bd55dfa6f36057be1574b90995bf36d7201dfb8f0
+voiceconversion==0.0.5 \
+    --hash=sha256:9e5618f0b56259acff9c0988015317214eb9687ea8a3ac49f1368576e20e7c21 \
+    --hash=sha256:b25fadc57cb0f6357b0a4080f5124835cf22bb4433c67eef6bd5691fcec90e9c
     # via -r requirements-3.12.3.txt
 xxhash==3.6.0 \
     --hash=sha256:01262da8798422d0685f7cef03b2bd3f4f46511b02830861df548d7def4402ad \

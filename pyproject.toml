@@ -1,6 +1,6 @@
 [project]
 name = "avoc"
-version = "0.0.5"
+version = "0.0.6"
 authors = [
   { name="develOseven", email="devel.oseven@gmail.com" },
 ]
@@ -9,7 +9,7 @@ readme = "README.md"
 dependencies = [
   "PySide6",
   "PySide6-GlobalHotkeys",
-  "voiceconversion",
+  "voiceconversion>=0.0.5",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
