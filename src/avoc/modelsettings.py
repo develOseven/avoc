@@ -16,7 +16,7 @@ class ModelSettingsGroupBox(QGroupBox):
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
 
-        self.setTitle("Settings for the Active Voice Model")
+        self.setTitle("Active Voice Model Settings")
 
         modelSettingsLayout = QGridLayout()
         row = 0
