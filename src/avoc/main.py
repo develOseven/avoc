@@ -94,6 +94,12 @@ class MainWindow(QMainWindow):
 
         self.customizeUiWidget = CustomizeUiWidget()
 
+        viewMenu = self.menuBar().addMenu("View")
+        hideUiAction = QAction("Hide AVoc", self)
+        hideUiAction.triggered.connect(self.hide)
+
+        viewMenu.addAction(hideUiAction)
+
         preferencesMenu = self.menuBar().addMenu("Preferences")
 
         custumizeUiAction = QAction("Customize...", self)
@@ -160,6 +166,7 @@ class MainWindow(QMainWindow):
         self.systemTrayIcon = QSystemTrayIcon(self.windowIcon(), self)
         systemTrayMenu = QMenu()
         activateWindowAction = QAction("Show AVoc", self)
+        activateWindowAction.triggered.connect(lambda: self.show())
         activateWindowAction.triggered.connect(
             lambda: self.windowHandle().requestActivate()
         )
