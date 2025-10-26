@@ -272,7 +272,7 @@ class VoiceChangerManager(QObject):
         assert type(modelSlotIndex) is int
         slotInfo = self.modelSlotManager.get_slot_info(modelSlotIndex)
 
-        if slotInfo is not None:
+        if slotInfo is not None and slotInfo.voiceChangerType is not None:
             voiceChangerSettingsDict["modelSlotIndex"] = modelSlotIndex
             voiceChangerSettingsDict["tran"] = slotInfo.defaultTune
             voiceChangerSettingsDict["formantShift"] = slotInfo.defaultFormantShift
@@ -308,7 +308,7 @@ class VoiceChangerManager(QObject):
             with self.longOperationCm():
                 self.appendVoiceChanger(voiceChangerSettings, slotInfo)
 
-        if slotInfo is not None:
+        if slotInfo is not None and slotInfo.voiceChangerType is not None:
             self.modelSettingsLoaded.emit(
                 slotInfo.defaultTune,
                 slotInfo.defaultFormantShift,
@@ -381,6 +381,59 @@ class VoiceChangerManager(QObject):
             self.vcs[-1].vcmodel.settings.indexRatio = slotInfo.defaultIndexRatio
 
         self.modelSlotManager.save_model_slot(modelSlotIndex, slotInfo)
+
+    def renumberSlots(
+        self,
+        sourceStart: int,
+        sourceEnd: int,
+        destinationRow: int,
+    ):
+        if destinationRow > sourceEnd:
+            blockSize = sourceEnd - sourceStart + 1
+            for vc in self.vcs:
+                oldIndex = vc.settings.get_property("modelSlotIndex")
+
+                if sourceStart <= oldIndex <= sourceEnd:
+                    newIndex = oldIndex + (destinationRow - sourceEnd - 1)
+                elif sourceEnd < oldIndex < destinationRow:
+                    newIndex = oldIndex - blockSize
+                else:
+                    newIndex = oldIndex
+
+                if newIndex != oldIndex:
+                    vc.settings.set_property("modelSlotIndex", newIndex)
+
+        elif destinationRow < sourceStart:
+            blockSize = sourceEnd - sourceStart + 1
+            for vc in self.vcs:
+                oldIndex = vc.settings.get_property("modelSlotIndex")
+
+                if sourceStart <= oldIndex <= sourceEnd:
+                    newIndex = oldIndex - (sourceStart - destinationRow)
+                elif destinationRow <= oldIndex < sourceStart:
+                    newIndex = oldIndex + blockSize
+                else:
+                    newIndex = oldIndex
+
+                if newIndex != oldIndex:
+                    vc.settings.set_property("modelSlotIndex", newIndex)
+
+    def removeSlots(self, first: int, last: int):
+        count = last - first + 1
+
+        remaining = []
+        for vc in self.vcs:
+            idx = vc.settings.get_property("modelSlotIndex")
+            if first <= idx <= last:
+                continue
+            remaining.append(vc)
+        self.vcs = remaining
+
+        for vc in self.vcs:
+            oldIndex = vc.settings.get_property("modelSlotIndex")
+            if oldIndex > last:
+                new_index = oldIndex - count
+                vc.settings.set_property("modelSlotIndex", new_index)
 
     def setRunning(self, running: bool, passThrough: bool):
         if (self.audio is not None) == running:
@@ -616,6 +669,14 @@ def main():
     window.vcm.modelSettingsLoaded.connect(onModelSettingsLoaded)
 
     window.windowAreaWidget.voiceCards.currentRowChanged.connect(onVoiceCardChanged)
+    window.windowAreaWidget.cardsMoved.connect(
+        window.vcm.modelSlotManager.renumberSlots
+    )
+    window.windowAreaWidget.cardsMoved.connect(window.vcm.renumberSlots)
+    window.windowAreaWidget.cardsRemoved.connect(
+        window.vcm.modelSlotManager.removeSlots
+    )
+    window.windowAreaWidget.cardsRemoved.connect(window.vcm.removeSlots)
     window.windowAreaWidget.voiceCards.droppedModelFiles.connect(
         lambda loadModelParams: window.vcm.importModel(loadModelParams)
     )
@@ -634,15 +695,16 @@ def main():
     # Load the current voice model if any.
     if not clParser.isSet(noModelLoadOption):
         window.vcm.initialize()
-        # Immediately start if it was saved in settings.
-        interfaceSettings = QSettings()
-        interfaceSettings.beginGroup("Interface")
-        running = interfaceSettings.value("running", False, type=bool)
-        assert type(running) is bool
-        window.windowAreaWidget.startButton.setChecked(running)
-        window.windowAreaWidget.startButton.toggled.connect(
-            lambda checked: interfaceSettings.setValue("running", checked)
-        )
+        if window.vcm.vcs[-1].vcmodel is not None:
+            # Immediately start if it was saved in settings.
+            interfaceSettings = QSettings()
+            interfaceSettings.beginGroup("Interface")
+            running = interfaceSettings.value("running", False, type=bool)
+            assert type(running) is bool
+            window.windowAreaWidget.startButton.setChecked(running)
+            window.windowAreaWidget.startButton.toggled.connect(
+                lambda checked: interfaceSettings.setValue("running", checked)
+            )
 
     # Show the window
     window.resize(1980, 1080)  # TODO: store interface dimensions

@@ -47,6 +47,9 @@ PASS_THROUGH_TXT = "Pass Through"
 
 
 class WindowAreaWidget(QWidget):
+    cardsMoved = Signal(int, int, int)
+    cardsRemoved = Signal(int, int)
+
     def __init__(self, modelDir: str, parent: QWidget | None = None):
         super().__init__(parent)
 
@@ -90,15 +93,6 @@ class WindowAreaWidget(QWidget):
         self.startButton.toggled.connect(
             lambda checked: self.startButton.setText(
                 RUNNING_TXT if checked else START_TXT
-            )
-        )
-        # Unfortunately can't drag the cards while the voice conversion is running
-        # because it will select them and load.
-        self.startButton.toggled.connect(
-            lambda checked: self.voiceCards.setDragDropMode(
-                QAbstractItemView.DragDropMode.DropOnly
-                if checked
-                else QAbstractItemView.DragDropMode.InternalMove
             )
         )
         # Can't change audio settings while running.
@@ -148,7 +142,25 @@ class WindowAreaWidget(QWidget):
         )
 
         self.voiceCards.model().rowsMoved.connect(self.rearrangeVoiceModelDirs)
+        self.voiceCards.model().rowsMoved.connect(
+            lambda _1, sourceStart, sourceEnd, _3, destinationRow: self.cardsMoved.emit(
+                sourceStart, sourceEnd, destinationRow
+            )
+        )
         self.voiceCards.model().rowsRemoved.connect(self.deleteVoiceModelDirs)
+        self.voiceCards.model().rowsRemoved.connect(
+            lambda _, first, last: self.cardsRemoved.emit(first, last)
+        )
+        self.voiceCards.model().rowsRemoved.connect(
+            lambda _, first, last: settings.setValue(
+                "currentVoiceCardIndex",
+                (
+                    last
+                    if settings.value("currentVoiceCardIndex", 0) > last
+                    else settings.value("currentVoiceCardIndex", 0)
+                ),
+            )
+        )
 
         self.voiceCards.setCurrentRow(int(settings.value("currentVoiceCardIndex", 0)))
         self.voiceCards.currentRowChanged.connect(
