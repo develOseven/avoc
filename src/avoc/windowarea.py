@@ -2,10 +2,11 @@ import json
 import os
 import re
 import shutil
-from typing import Iterable, List
+from typing import Callable, Iterable, List
 
 from PySide6.QtCore import QModelIndex, QSettings, QSize, Qt, Signal
 from PySide6.QtGui import (
+    QAction,
     QDragEnterEvent,
     QDragMoveEvent,
     QDropEvent,
@@ -21,6 +22,7 @@ from PySide6.QtWidgets import (
     QListView,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QMessageBox,
     QPushButton,
     QVBoxLayout,
@@ -29,7 +31,7 @@ from PySide6.QtWidgets import (
 from voiceconversion.utils.LoadModelParams import LoadModelParamFile, LoadModelParams
 
 from .audiosettings import AudioSettingsGroupBox
-from .exceptions import FailedToMoveVoiceCardException
+from .exceptions import FailedToDeleteVoiceCardException, FailedToMoveVoiceCardException
 from .modelsettings import ModelSettingsGroupBox
 from .processingsettings import ProcessingSettingsGroupBox
 
@@ -42,28 +44,6 @@ DROP_ICON_FILE = "Drop icon file here<br><b>*.png</b>, <b>*.jpeg</b>, <b>*.gif</
 START_TXT = "Start"
 RUNNING_TXT = "Running..."
 PASS_THROUGH_TXT = "Pass Through"
-
-
-def voiceCardForSlot(modelDir: str, row: int) -> QWidget:
-    folder = str(row)
-    name = UNKNOWN_MODEL_NAME
-    paramsFilePath = os.path.join(modelDir, folder, "params.json")
-    if os.path.exists(paramsFilePath):
-        with open(paramsFilePath) as f:
-            params = json.load(f)
-            iconFileName = params.get("iconFile", "")
-            name = params.get("name", name)
-            if iconFileName:
-                pixmap = QPixmap(os.path.join(modelDir, folder, iconFileName))
-                label = QLabel()
-                label.setPixmap(cropCenterScalePixmap(pixmap, VOICE_CARD_SIZE))
-                label.setToolTip(name)
-                return label
-    widget = VoiceCardPlaceholderWidget(
-        VOICE_CARD_SIZE, f"{name}<br><br>{DROP_ICON_FILE}"
-    )
-    widget.setToolTip(name)
-    return widget
 
 
 class WindowAreaWidget(QWidget):
@@ -153,7 +133,9 @@ class WindowAreaWidget(QWidget):
 
         for folder in os.listdir(modelDir):
             if folder.isdigit() and os.path.isdir(os.path.join(modelDir, folder)):
-                modelDirToModelIcon[folder] = voiceCardForSlot(modelDir, int(folder))
+                modelDirToModelIcon[folder] = self.voiceCards.voiceCardForSlot(
+                    int(folder)
+                )
 
         for folder in sortedNumerically(modelDirToModelIcon):
             self.voiceCards.addWidget(modelDirToModelIcon[folder])
@@ -166,6 +148,7 @@ class WindowAreaWidget(QWidget):
         )
 
         self.voiceCards.model().rowsMoved.connect(self.rearrangeVoiceModelDirs)
+        self.voiceCards.model().rowsRemoved.connect(self.deleteVoiceModelDirs)
 
         self.voiceCards.setCurrentRow(int(settings.value("currentVoiceCardIndex", 0)))
         self.voiceCards.currentRowChanged.connect(
@@ -223,6 +206,30 @@ class WindowAreaWidget(QWidget):
 
         # Move the temp folder into its new numbered slot
         shutil.move(tmp_path, os.path.join(self.modelDir, str(destinationRow)))
+
+    def deleteVoiceModelDirs(self, parent: QModelIndex, first: int, last: int):
+        dirs = sorted(
+            [d for d in os.listdir(self.modelDir) if d.isdigit()], key=lambda x: int(x)
+        )
+        total = len(dirs)
+
+        if not (0 <= first <= last < total):
+            raise FailedToDeleteVoiceCardException("Invalid index range")
+
+        # Delete the target directories
+        for i in range(first, last + 1):
+            dirPath = os.path.join(self.modelDir, str(i))
+            if os.path.exists(dirPath):
+                shutil.rmtree(dirPath)
+            else:
+                raise FailedToDeleteVoiceCardException(f"Directory {dirPath} not found")
+
+        # Renumber the remaining directories
+        shiftCount = last - first + 1
+        for i in range(last + 1, total):
+            old_path = os.path.join(self.modelDir, str(i))
+            new_path = os.path.join(self.modelDir, str(i - shiftCount))
+            os.rename(old_path, new_path)
 
 
 class FlowContainer(QListWidget):
@@ -391,9 +398,39 @@ class VoiceCardsContainer(FlowContainerWithFixedLast):
 
     def onVoiceCardUpdated(self, row: int):
         if row >= self.count() - 1:
-            self.insertWidget(row, voiceCardForSlot(self.modelDir, row))
+            self.insertWidget(row, self.voiceCardForSlot(row))
         else:
-            self.setItemWidget(self.item(row), voiceCardForSlot(self.modelDir, row))
+            self.setItemWidget(self.item(row), self.voiceCardForSlot(row))
+
+    def voiceCardForSlot(self, row: int) -> QWidget:
+        folder = str(row)
+        name = UNKNOWN_MODEL_NAME
+        widget: QWidget | QLabel | None = None
+        paramsFilePath = os.path.join(self.modelDir, folder, "params.json")
+        if os.path.exists(paramsFilePath):
+            with open(paramsFilePath) as f:
+                params = json.load(f)
+                iconFileName = params.get("iconFile", "")
+                name = params.get("name", name)
+                if iconFileName:
+                    pixmap = QPixmap(os.path.join(self.modelDir, folder, iconFileName))
+                    widget = QLabel()
+                    widget.setPixmap(cropCenterScalePixmap(pixmap, VOICE_CARD_SIZE))
+                    widget.setToolTip(name)
+        if widget is None:
+            widget = VoiceCardPlaceholderWidget(
+                VOICE_CARD_SIZE, f"{name}<br><br>{DROP_ICON_FILE}"
+            )
+        widget.setToolTip(name)
+        contextMenu = QMenu(widget)
+        deleteAction = QAction("Delete", widget)
+        deleteAction.triggered.connect(lambda: self.takeItem(self.currentRow()))
+        contextMenu.addAction(deleteAction)
+        widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        widget.customContextMenuRequested.connect(
+            lambda point: contextMenu.exec(widget.mapToGlobal(point))
+        )
+        return widget
 
 
 class VoiceCardPlaceholderWidget(QWidget):
