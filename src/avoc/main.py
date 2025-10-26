@@ -445,12 +445,15 @@ class VoiceChangerManager(QObject):
             audioSettings.beginGroup("AudioSettings")
             processingSettings = QSettings()
             processingSettings.beginGroup("ProcessingSettings")
+            chunkSize = processingSettings.value(
+                "chunkSize", DEFAULT_CHUNK_SIZE, type=int
+            )
+            assert type(chunkSize) is int
             self.audio = Audio(
                 audioSettings.value("audioInputDevice"),
                 audioSettings.value("audioOutputDevice"),
                 audioSettings.value("sampleRate"),
-                processingSettings.value("chunkSize", DEFAULT_CHUNK_SIZE, type=int)
-                * 128,
+                chunkSize * 128,
                 self.changeVoice,
             )  # TODO: pass settings
             self.audio.voiceChangerFilter.passThrough = passThrough
