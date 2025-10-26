@@ -46,7 +46,7 @@ from voiceconversion.VoiceChangerSettings import VoiceChangerSettings
 from voiceconversion.VoiceChangerV2 import VoiceChangerV2
 
 from .audio import Audio
-from .customizeui import CustomizeUiWidget
+from .customizeui import DEFAULT_CACHED_MODELS_COUNT, CustomizeUiWidget
 from .exceptions import (
     FailedToSetModelDirException,
     PipelineNotInitializedException,
@@ -198,7 +198,7 @@ class VoiceChangerManager(QObject):
     def __init__(self, modelDir: str, pretrainDir: str):
         super().__init__()
 
-        self.vc: VoiceChangerV2 | None = None
+        self.vcs: list[VoiceChangerV2] = []
 
         self.modelDir = modelDir
         self.pretrainDir = pretrainDir
@@ -252,6 +252,7 @@ class VoiceChangerManager(QObject):
         slotInfo = self.modelSlotManager.get_slot_info(modelSlotIndex)
 
         if slotInfo is not None:
+            voiceChangerSettingsDict["modelSlotIndex"] = modelSlotIndex
             voiceChangerSettingsDict["tran"] = slotInfo.defaultTune
             voiceChangerSettingsDict["formantShift"] = slotInfo.defaultFormantShift
             voiceChangerSettingsDict["indexRatio"] = slotInfo.defaultIndexRatio
@@ -266,9 +267,35 @@ class VoiceChangerManager(QObject):
     def initialize(self):
         voiceChangerSettings, slotInfo = self.getVoiceChangerSettings()
 
-        if self.vc is not None and self.vc.settings == voiceChangerSettings:
-            return
+        try:
+            index = next(
+                i
+                for i, vc in enumerate(self.vcs)
+                if vc.settings == voiceChangerSettings
+            )
+            tmp = self.vcs[index]
+            self.vcs[index] = self.vcs[-1]
+            self.vcs[-1] = tmp
+        except StopIteration:
+            interfaceSettings = QSettings()
+            interfaceSettings.beginGroup("Interface")
+            cachedModelsCount = interfaceSettings.value(
+                "cachedModelsCount", DEFAULT_CACHED_MODELS_COUNT, type=int
+            )
+            assert type(cachedModelsCount) is int
+            self.vcs = self.vcs[-cachedModelsCount:]
+            self.appendVoiceChanger(voiceChangerSettings, slotInfo)
 
+        if slotInfo is not None:
+            self.modelSettingsLoaded.emit(
+                slotInfo.defaultTune,
+                slotInfo.defaultFormantShift,
+                slotInfo.defaultIndexRatio,
+            )
+
+    def appendVoiceChanger(
+        self, voiceChangerSettings: VoiceChangerSettings, slotInfo: ModelSlots
+    ) -> None:
         self.device_manager = DeviceManager.get_instance()
         self.devices = self.device_manager.list_devices()
         self.device_manager.initialize(
@@ -277,39 +304,35 @@ class VoiceChangerManager(QObject):
             voiceChangerSettings.disableJit,
         )
 
-        self.vc = VoiceChangerV2(voiceChangerSettings)
+        self.vcs.append(VoiceChangerV2(voiceChangerSettings))
 
-        if slotInfo is None or slotInfo.voiceChangerType is None:
-            return
-
-        self.modelSettingsLoaded.emit(
-            slotInfo.defaultTune,
-            slotInfo.defaultFormantShift,
-            slotInfo.defaultIndexRatio,
-        )
-
-        if slotInfo.voiceChangerType == self.vc.get_type():
-            self.vc.set_slot_info(
-                slotInfo,
-                self.pretrainDir,
-            )
-            # TODO: unify changing properties that don't need reinit.
-            self.vc.vcmodel.settings.tran = slotInfo.defaultTune
-            self.vc.vcmodel.settings.formantShift = slotInfo.defaultFormantShift
-            self.vc.vcmodel.settings.indexRatio = slotInfo.defaultIndexRatio
-        elif slotInfo.voiceChangerType == "RVC":
-            logger.info("Loading RVC...")
-            self.vc.initialize(
-                RVCr2(
-                    self.modelDir,
-                    os.path.join(self.pretrainDir, CONTENT_VEC_500_ONNX),
+        if slotInfo is not None and slotInfo.voiceChangerType is not None:
+            if slotInfo.voiceChangerType == self.vcs[-1].get_type():
+                self.vcs[-1].set_slot_info(
                     slotInfo,
-                    voiceChangerSettings,
-                ),
-                self.pretrainDir,
-            )
-        else:
-            logger.error(f"Unknown voice changer model: {slotInfo.voiceChangerType}")
+                    self.pretrainDir,
+                )
+                # TODO: unify changing properties that don't need reinit.
+                self.vcs[-1].vcmodel.settings.tran = slotInfo.defaultTune
+                self.vcs[-1].vcmodel.settings.formantShift = (
+                    slotInfo.defaultFormantShift
+                )
+                self.vcs[-1].vcmodel.settings.indexRatio = slotInfo.defaultIndexRatio
+            elif slotInfo.voiceChangerType == "RVC":
+                logger.info("Loading RVC...")
+                self.vcs[-1].initialize(
+                    RVCr2(
+                        self.modelDir,
+                        os.path.join(self.pretrainDir, CONTENT_VEC_500_ONNX),
+                        slotInfo,
+                        voiceChangerSettings,
+                    ),
+                    self.pretrainDir,
+                )
+            else:
+                logger.error(
+                    f"Unknown voice changer model: {slotInfo.voiceChangerType}"
+                )
 
     def setModelSettings(
         self,
@@ -330,11 +353,11 @@ class VoiceChangerManager(QObject):
         slotInfo.defaultFormantShift = formantShift
         slotInfo.defaultIndexRatio = index
 
-        if self.vc is not None and self.vc.vcmodel is not None:
+        if self.vcs and self.vcs[-1].vcmodel is not None:
             # TODO: unify changing properties that don't need reinit.
-            self.vc.vcmodel.settings.tran = slotInfo.defaultTune
-            self.vc.vcmodel.settings.formantShift = slotInfo.defaultFormantShift
-            self.vc.vcmodel.settings.indexRatio = slotInfo.defaultIndexRatio
+            self.vcs[-1].vcmodel.settings.tran = slotInfo.defaultTune
+            self.vcs[-1].vcmodel.settings.formantShift = slotInfo.defaultFormantShift
+            self.vcs[-1].vcmodel.settings.indexRatio = slotInfo.defaultIndexRatio
 
         self.modelSlotManager.save_model_slot(modelSlotIndex, slotInfo)
 
@@ -365,7 +388,7 @@ class VoiceChangerManager(QObject):
     ) -> tuple[AudioInOutFloat, float, list[int], tuple | None]:
         try:
             with self.device_manager.lock:
-                audio, vol, perf = self.vc.on_request(receivedData)
+                audio, vol, perf = self.vcs[-1].on_request(receivedData)
             return audio, vol, perf, None
         except VoiceChangerIsNotSelectedException as e:
             logger.exception(e)
