@@ -268,7 +268,7 @@ class VoiceChangerManager(QObject):
 
         interfaceSettings = QSettings()
         interfaceSettings.beginGroup("InterfaceSettings")
-        modelSlotIndex = interfaceSettings.value("currentVoiceCardIndex", -1, type=int)
+        modelSlotIndex = interfaceSettings.value("currentVoiceCardIndex", 0, type=int)
         assert type(modelSlotIndex) is int
         slotInfo = self.modelSlotManager.get_slot_info(modelSlotIndex)
 
@@ -363,7 +363,7 @@ class VoiceChangerManager(QObject):
     ):
         interfaceSettings = QSettings()
         interfaceSettings.beginGroup("InterfaceSettings")
-        modelSlotIndex = interfaceSettings.value("currentVoiceCardIndex", -1, type=int)
+        modelSlotIndex = interfaceSettings.value("currentVoiceCardIndex", 0, type=int)
         assert type(modelSlotIndex) is int
         slotInfo = self.modelSlotManager.get_slot_info(modelSlotIndex)
         if slotInfo is None or slotInfo.voiceChangerType is None:
