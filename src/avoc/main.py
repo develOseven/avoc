@@ -4,6 +4,7 @@ import os
 import shutil
 import signal
 import sys
+from contextlib import AbstractContextManager, contextmanager
 from traceback import format_exc
 from typing import Tuple
 
@@ -56,6 +57,7 @@ from .exceptions import (
     PipelineNotInitializedException,
     VoiceChangerIsNotSelectedException,
 )
+from .loadingoverlay import LoadingOverlay
 from .processingsettings import (
     DEFAULT_CHUNK_SIZE,
     DEFAULT_SILENT_THRESHOLD,
@@ -90,6 +92,8 @@ DISABLE_PASS_THROUGH_KEYBIND_ID = "disable_pass_through"
 class MainWindow(QMainWindow):
     def initialize(self, modelDir: str):
         centralWidget = QStackedWidget()
+        self.loadingOverlay = LoadingOverlay(centralWidget)
+        self.loadingOverlay.hide()
         self.setCentralWidget(centralWidget)
 
         self.windowAreaWidget = WindowAreaWidget(modelDir)
@@ -208,7 +212,9 @@ class VoiceChangerManager(QObject):
     modelUpdated = Signal(int)
     modelSettingsLoaded = Signal(int, float, float)
 
-    def __init__(self, modelDir: str, pretrainDir: str):
+    def __init__(
+        self, modelDir: str, pretrainDir: str, longOperationCm: AbstractContextManager
+    ):
         super().__init__()
 
         self.vcs: list[VoiceChangerV2] = []
@@ -220,6 +226,8 @@ class VoiceChangerManager(QObject):
         self.modelSlotManager = ModelSlotManager.get_instance(
             self.modelDir, "upload_dir"
         )  # TODO: fix the dir
+
+        self.longOperationCm = longOperationCm
 
     def getVoiceChangerSettings(self) -> Tuple[VoiceChangerSettings, ModelSlots | None]:
         voiceChangerSettings = VoiceChangerSettings()
@@ -297,7 +305,8 @@ class VoiceChangerManager(QObject):
             )
             assert type(cachedModelsCount) is int
             self.vcs = self.vcs[-cachedModelsCount:]
-            self.appendVoiceChanger(voiceChangerSettings, slotInfo)
+            with self.longOperationCm():
+                self.appendVoiceChanger(voiceChangerSettings, slotInfo)
 
         if slotInfo is not None:
             self.modelSettingsLoaded.emit(
@@ -538,8 +547,20 @@ def main():
     # Lay out the window.
     window.initialize(os.path.join(appLocalDataLocation, MODEL_DIR_NAME))
 
+    @contextmanager
+    def longOperationCm():
+        try:
+            window.loadingOverlay.show()
+            app.processEvents()
+            yield
+        finally:
+            window.vcm.initialize()
+            window.loadingOverlay.hide()
+
     # Create the voice changer and connect it to the controls.
-    window.vcm = VoiceChangerManager(window.windowAreaWidget.modelDir, pretrainDir)
+    window.vcm = VoiceChangerManager(
+        window.windowAreaWidget.modelDir, pretrainDir, longOperationCm
+    )
     window.windowAreaWidget.startButton.toggled.connect(
         lambda checked: window.vcm.setRunning(
             checked,
