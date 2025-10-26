@@ -29,7 +29,10 @@ from PySide6.QtWidgets import (
     QSystemTrayIcon,
 )
 from PySide6_GlobalHotkeys import Listener, bindHotkeys
-from voiceconversion.common.deviceManager.DeviceManager import DeviceManager
+from voiceconversion.common.deviceManager.DeviceManager import (
+    DeviceManager,
+    with_device_manager_context,
+)
 from voiceconversion.data.ModelSlot import ModelSlots
 from voiceconversion.downloader.WeightDownloader import (
     CONTENT_VEC_500_ONNX,
@@ -293,12 +296,11 @@ class VoiceChangerManager(QObject):
                 slotInfo.defaultIndexRatio,
             )
 
+    @with_device_manager_context
     def appendVoiceChanger(
         self, voiceChangerSettings: VoiceChangerSettings, slotInfo: ModelSlots
     ) -> None:
-        self.device_manager = DeviceManager.get_instance()
-        self.devices = self.device_manager.list_devices()
-        self.device_manager.initialize(
+        DeviceManager.get_instance().initialize(
             voiceChangerSettings.gpu,
             voiceChangerSettings.forceFp32,
             voiceChangerSettings.disableJit,
@@ -387,8 +389,7 @@ class VoiceChangerManager(QObject):
         self, receivedData: AudioInOutFloat
     ) -> tuple[AudioInOutFloat, float, list[int], tuple | None]:
         try:
-            with self.device_manager.lock:
-                audio, vol, perf = self.vcs[-1].on_request(receivedData)
+            audio, vol, perf = self.vcs[-1].on_request(receivedData)
             return audio, vol, perf, None
         except VoiceChangerIsNotSelectedException as e:
             logger.exception(e)

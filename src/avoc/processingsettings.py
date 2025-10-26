@@ -64,7 +64,7 @@ def loadGpu() -> Tuple[int, DevicePresentation]:
     processingSettings = QSettings()
     processingSettings.beginGroup("ProcessingSettings")
     devicesByPreference = sorted(
-        DeviceManager.get_instance().list_devices(),
+        DeviceManager.list_devices(),
         key=lambda d: (
             BACKEND_PREFERENCES.index(d["backend"])
             if d["backend"] in BACKEND_PREFERENCES
