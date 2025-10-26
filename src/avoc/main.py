@@ -50,6 +50,7 @@ from voiceconversion.VoiceChangerV2 import VoiceChangerV2
 
 from .audio import Audio
 from .customizeui import DEFAULT_CACHED_MODELS_COUNT, CustomizeUiWidget
+from .exceptionhook import qt_exception_hook
 from .exceptions import (
     FailedToSetModelDirException,
     PipelineNotInitializedException,
@@ -76,6 +77,8 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+assert qt_exception_hook
 
 # The IDs to talk with the keybindings configurator about the voice cards.
 VOICE_CARD_KEYBIND_ID_PREFIX = "voice_card_"
