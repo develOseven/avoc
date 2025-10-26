@@ -267,7 +267,7 @@ class VoiceChangerManager(QObject):
         }
 
         interfaceSettings = QSettings()
-        interfaceSettings.beginGroup("Interface")
+        interfaceSettings.beginGroup("InterfaceSettings")
         modelSlotIndex = interfaceSettings.value("currentVoiceCardIndex", -1, type=int)
         assert type(modelSlotIndex) is int
         slotInfo = self.modelSlotManager.get_slot_info(modelSlotIndex)
@@ -299,7 +299,7 @@ class VoiceChangerManager(QObject):
             self.vcs[-1] = tmp
         except StopIteration:
             interfaceSettings = QSettings()
-            interfaceSettings.beginGroup("Interface")
+            interfaceSettings.beginGroup("InterfaceSettings")
             cachedModelsCount = interfaceSettings.value(
                 "cachedModelsCount", DEFAULT_CACHED_MODELS_COUNT, type=int
             )
@@ -362,7 +362,7 @@ class VoiceChangerManager(QObject):
         index: float,
     ):
         interfaceSettings = QSettings()
-        interfaceSettings.beginGroup("Interface")
+        interfaceSettings.beginGroup("InterfaceSettings")
         modelSlotIndex = interfaceSettings.value("currentVoiceCardIndex", -1, type=int)
         assert type(modelSlotIndex) is int
         slotInfo = self.modelSlotManager.get_slot_info(modelSlotIndex)
@@ -647,7 +647,7 @@ def main():
     modelSettingsGroupBox.changed.connect(onModelSettingsChanged)
 
     interfaceSettings = QSettings()
-    interfaceSettings.beginGroup("Interface")
+    interfaceSettings.beginGroup("InterfaceSettings")
 
     def onVoiceCardChanged() -> None:
         modelSettingsGroupBox.changed.disconnect(onModelSettingsChanged)
@@ -701,7 +701,7 @@ def main():
         if window.vcm.vcs[-1].vcmodel is not None:
             # Immediately start if it was saved in settings.
             interfaceSettings = QSettings()
-            interfaceSettings.beginGroup("Interface")
+            interfaceSettings.beginGroup("InterfaceSettings")
             running = interfaceSettings.value("running", False, type=bool)
             assert type(running) is bool
             window.windowAreaWidget.startButton.setChecked(running)

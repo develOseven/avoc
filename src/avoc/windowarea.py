@@ -56,7 +56,7 @@ class WindowAreaWidget(QWidget):
         self.modelDir = modelDir
 
         settings = QSettings()
-        settings.beginGroup("Interface")
+        settings.beginGroup("InterfaceSettings")
 
         layout = QVBoxLayout()
 

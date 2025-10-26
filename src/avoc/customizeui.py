@@ -19,7 +19,7 @@ class CustomizeUiWidget(QWidget):
         super().__init__(parent)
 
         interfaceSettings = QSettings()
-        interfaceSettings.beginGroup("Interface")
+        interfaceSettings.beginGroup("InterfaceSettings")
 
         layout = QVBoxLayout()
 
