@@ -60,6 +60,7 @@ from .exceptions import (
 from .loadingoverlay import LoadingOverlay
 from .processingsettings import (
     DEFAULT_CHUNK_SIZE,
+    DEFAULT_EXTRA_CONVERT_SIZE,
     DEFAULT_SILENT_THRESHOLD,
     loadF0Det,
     loadGpu,
@@ -242,7 +243,9 @@ class VoiceChangerManager(QObject):
             "inputSampleRate": int(audioSettings.value("sampleRate")),
             "outputSampleRate": int(audioSettings.value("sampleRate")),
             "gpu": devices[gpuIndex]["id"],
-            "extraConvertSize": 0.1,
+            "extraConvertSize": processingSettings.value(
+                "extraConvertSize", DEFAULT_EXTRA_CONVERT_SIZE, type=float
+            ),
             "serverReadChunkSize": processingSettings.value(
                 "chunkSize", DEFAULT_CHUNK_SIZE, type=int
             ),

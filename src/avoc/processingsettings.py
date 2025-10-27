@@ -3,6 +3,7 @@ from typing import Tuple, get_args
 from PySide6.QtCore import QEvent, QPoint, QSettings, Qt
 from PySide6.QtWidgets import (
     QComboBox,
+    QDoubleSpinBox,
     QGridLayout,
     QGroupBox,
     QLabel,
@@ -32,6 +33,7 @@ F0_DET_PREFERENCES = [
 BACKEND_PREFERENCES = ["cuda", "directml", "mps", "cpu"]
 DEFAULT_SILENT_THRESHOLD = -90
 DEFAULT_CHUNK_SIZE = 22
+DEFAULT_EXTRA_CONVERT_SIZE = 3.0
 
 
 def getF0DetByPreference() -> list[str]:
@@ -135,6 +137,32 @@ class ProcessingSettingsGroupBox(QGroupBox):
         processingSettingsLayout.addWidget(chunkSizeSlider, row, 1)
         processingSettingsLayout.addWidget(self.chunkSizeSpinBox, row, 2)
         row += 1
+        extraConvertSizeLabel = QLabel("Extra")
+        extraConvertSizeLabel.setToolTip(
+            "Extra audio history that will be used for voice conversion. Does not affect the delay. More extra - better voice quality, more GPU usage. Less extra - vice versa."  # noqa: E501
+        )
+        extraConvertSizeSlider = QSlider(
+            Qt.Orientation.Horizontal,
+        )
+        self.extraConvertSizeDoubleSpinBox = QDoubleSpinBox(
+            minimum=0.1, maximum=5, singleStep=0.1, decimals=1
+        )
+        extraConvertSizeSlider.setMinimum(
+            int(self.extraConvertSizeDoubleSpinBox.minimum() * 10)
+        )
+        extraConvertSizeSlider.setMaximum(
+            int(self.extraConvertSizeDoubleSpinBox.maximum() * 10)
+        )
+        extraConvertSizeSlider.valueChanged.connect(
+            lambda v: self.extraConvertSizeDoubleSpinBox.setValue(v / 10.0)
+        )
+        self.extraConvertSizeDoubleSpinBox.valueChanged.connect(
+            lambda v: extraConvertSizeSlider.setValue(v * 10)
+        )
+        processingSettingsLayout.addWidget(extraConvertSizeLabel, row, 0)
+        processingSettingsLayout.addWidget(extraConvertSizeSlider, row, 1)
+        processingSettingsLayout.addWidget(self.extraConvertSizeDoubleSpinBox, row, 2)
+        row += 1
         gpuLabel = QLabel("Computing Device")
         gpuLabel.setToolTip(
             "A device like a GPU (Graphics Processing Unit) to use for the voice conversion."  # noqa: E501
@@ -176,6 +204,18 @@ class ProcessingSettingsGroupBox(QGroupBox):
 
         self.chunkSizeSpinBox.valueChanged.connect(
             lambda chunkSize: processingSettings.setValue("chunkSize", chunkSize)
+        )
+
+        extraConvertSize = processingSettings.value(
+            "extraConvertSize", DEFAULT_EXTRA_CONVERT_SIZE, type=float
+        )
+        assert type(extraConvertSize) is float
+        self.extraConvertSizeDoubleSpinBox.setValue(extraConvertSize)
+
+        self.extraConvertSizeDoubleSpinBox.valueChanged.connect(
+            lambda extraConvertSize: processingSettings.setValue(
+                "extraConvertSize", extraConvertSize
+            )
         )
 
         self.gpuComboBox.setCurrentIndex(gpuIndex)
