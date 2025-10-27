@@ -9,7 +9,7 @@ readme = "README.md"
 dependencies = [
   "PySide6",
   "PySide6-GlobalHotkeys",
-  "voiceconversion>=0.0.5",
+  "voiceconversion>=0.0.6",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

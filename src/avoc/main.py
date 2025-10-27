@@ -250,7 +250,9 @@ class VoiceChangerManager(QObject):
                 "chunkSize", DEFAULT_CHUNK_SIZE, type=int
             ),
             "crossFadeOverlapSize": 0.1,
-            "forceFp32": 0,
+            # Avoid conversions, assume TF32 is ON internally.
+            # TODO: test delay. Maybe FP16 if no TF32 available.
+            "forceFp32": True,
             "disableJit": 0,
             "enableServerAudio": 1,
             "exclusiveMode": 0,
