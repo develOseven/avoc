@@ -11,7 +11,7 @@ from PySide6.QtMultimedia import (
 from .exceptions import AudioDeviceDisappearedException
 
 
-class AudioFilter(QIODevice):
+class AudioQtMultimediaFilter(QIODevice):
     def __init__(
         self, inputDevice: QIODevice, blockSamplesCount: int, changeVoice, parent=None
     ):
@@ -76,7 +76,7 @@ def getAudioDeviceById(deviceId: QByteArray, isInput: bool) -> QAudioDevice:
     raise AudioDeviceDisappearedException
 
 
-class Audio:
+class AudioQtMultimedia:
     def __init__(
         self,
         audioInputDeviceId: QByteArray,
@@ -105,7 +105,7 @@ class Audio:
         )  # TODO: check opening
 
         # Start the IO.
-        self.voiceChangerFilter = AudioFilter(
+        self.voiceChangerFilter = AudioQtMultimediaFilter(
             self.audioSource.start(),
             blockSamplesCount,
             changeVoice,
@@ -118,3 +118,6 @@ class Audio:
         self.audioSink.start(self.voiceChangerFilter)  # TODO: check audioSink.error()
 
         # TODO: connect slots to audioSink/audioSource errors to catch device changes.
+
+    def exit(self):
+        pass

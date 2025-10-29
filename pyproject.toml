@@ -7,6 +7,7 @@ authors = [
 description = "Voice changer for desktop"
 readme = "README.md"
 dependencies = [
+  "pipewire-filtertools; sys_platform=='linux'",
   "PySide6",
   "PySide6-GlobalHotkeys",
   "voiceconversion>=0.0.6",

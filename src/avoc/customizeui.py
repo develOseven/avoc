@@ -9,6 +9,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .audiobackends import HAS_PIPEWIRE
+
+if not HAS_PIPEWIRE:
+    from .audioqtmultimediasettings import AudioQtMultimediaSettingsGroupBox
+
 DEFAULT_CACHED_MODELS_COUNT = 1
 
 
@@ -53,6 +58,10 @@ class CustomizeUiWidget(QWidget):
             )
         )
         cachedModelsCountlayout.addWidget(cachedModelsCountSpinBox)
+
+        if not HAS_PIPEWIRE:
+            self.audioQtMultimediaSettingsGroupBox = AudioQtMultimediaSettingsGroupBox()
+            layout.addWidget(self.audioQtMultimediaSettingsGroupBox)
 
         cachedModelsCountlayout.addStretch()
 

@@ -1,46 +1,19 @@
-from typing import Tuple
-
 from PySide6.QtCore import QByteArray, QSettings
 from PySide6.QtWidgets import QComboBox, QGridLayout, QGroupBox, QLabel, QWidget
 
-from .audiodevices import getAudioDevicesForSampleRate
-
-DEFAULT_SAMPLE_RATE = 48000
-SAMPLE_RATES = [
-    32000,
-    44100,
-    48000,
-    96000,
-    128000,
-]
+from .audioqtmultimediadevices import getAudioQtMultimediaDevicesForSampleRate
+from .processingsettings import SAMPLE_RATES, loadSampleRate
 
 
-def loadSampleRate() -> Tuple[int, int]:
-    """:return: sample rate and its index in the SAMPLE_RATES list"""
-    settings = QSettings()
-    settings.beginGroup("AudioSettings")
-    savedSampleRate = settings.value("sampleRate", DEFAULT_SAMPLE_RATE, type=int)
-    assert type(savedSampleRate) is int
-    try:
-        index = SAMPLE_RATES.index(savedSampleRate)
-    except IndexError:
-        index = DEFAULT_SAMPLE_RATE
-    return SAMPLE_RATES[index], index
-
-
-class AudioSettingsGroupBox(QGroupBox):
+class AudioQtMultimediaSettingsGroupBox(QGroupBox):
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
 
-        self.setTitle("Audio Settings")
+        self.setTitle("Audio QtMltimedia Settings")
 
         audioSettingsLayout = QGridLayout()
         audioSettingsLayout.setColumnStretch(1, 1)  # Stretch the comboboxes.
         row = 0
-        self.sampleRateComboBox = QComboBox()
-        audioSettingsLayout.addWidget(QLabel("Sample Rate"), row, 0)
-        audioSettingsLayout.addWidget(self.sampleRateComboBox, row, 1)
-        row += 1
         self.audioInputComboBox = AudioDevicesComboBox(isInput=True)
         self.audioInputComboBox.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
@@ -58,23 +31,11 @@ class AudioSettingsGroupBox(QGroupBox):
         self.setLayout(audioSettingsLayout)
 
         settings = QSettings()
-        settings.beginGroup("AudioSettings")
+        settings.beginGroup("AudioQtMultimediaSettings")
 
-        # Restore the sample rate from saved settings.
-        for sampleRate in SAMPLE_RATES:
-            self.sampleRateComboBox.addItem(str(sampleRate))
-
-        _, index = loadSampleRate()
-        self.sampleRateComboBox.setCurrentIndex(index)
-
-        def onCurrentIndexChanged(index: int):
-            self.audioInputComboBox.refreshDeviceOptions(SAMPLE_RATES[index])
-            self.audioOutputComboBox.refreshDeviceOptions(SAMPLE_RATES[index])
-
-        self.sampleRateComboBox.currentIndexChanged.connect(onCurrentIndexChanged)
-
-        # Load the device lists.
-        onCurrentIndexChanged(self.sampleRateComboBox.currentIndex())
+        _, sampleRateIndex = loadSampleRate()
+        self.audioInputComboBox.refreshDeviceOptions(SAMPLE_RATES[sampleRateIndex])
+        self.audioOutputComboBox.refreshDeviceOptions(SAMPLE_RATES[sampleRateIndex])
 
         # Restore the input device from saved settings.
         self.audioInputComboBox.restoreFromSavedSetting(
@@ -85,11 +46,6 @@ class AudioSettingsGroupBox(QGroupBox):
         )
 
         # Set up the saving of the settings.
-        self.sampleRateComboBox.currentIndexChanged.connect(
-            lambda: settings.setValue(
-                "sampleRate", int(self.sampleRateComboBox.currentText())
-            ),
-        )
         self.audioInputComboBox.currentIndexChanged.connect(
             lambda: settings.setValue(
                 "audioInputDevice", self.audioInputComboBox.currentData()
@@ -102,7 +58,6 @@ class AudioSettingsGroupBox(QGroupBox):
         )
 
         # Sync settings in case they weren't initialized.
-        settings.setValue("sampleRate", int(self.sampleRateComboBox.currentText()))
         settings.setValue("audioInputDevice", self.audioInputComboBox.currentData())
         settings.setValue("audioOutputDevice", self.audioOutputComboBox.currentData())
 
@@ -114,7 +69,9 @@ class AudioDevicesComboBox(QComboBox):
         self.defaultIndex = 0
 
     def refreshDeviceOptions(self, sampleRate: int):
-        audioDevices = getAudioDevicesForSampleRate(sampleRate, self.isInput)
+        audioDevices = getAudioQtMultimediaDevicesForSampleRate(
+            sampleRate, self.isInput
+        )
         if sorted(audioDevices.keys()) != sorted(
             [self.itemData(i) for i in range(self.count())]
         ):

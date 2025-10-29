@@ -30,7 +30,6 @@ from PySide6.QtWidgets import (
 )
 from voiceconversion.utils.LoadModelParams import LoadModelParamFile, LoadModelParams
 
-from .audiosettings import AudioSettingsGroupBox
 from .exceptions import FailedToDeleteVoiceCardException, FailedToMoveVoiceCardException
 from .modelsettings import ModelSettingsGroupBox
 from .processingsettings import ProcessingSettingsGroupBox
@@ -66,9 +65,6 @@ class WindowAreaWidget(QWidget):
 
         controlsLayout = QHBoxLayout()
 
-        self.audioSettingsGroupBox = AudioSettingsGroupBox()
-        controlsLayout.addWidget(self.audioSettingsGroupBox, stretch=1)
-
         self.processingSettingsGroupBox = ProcessingSettingsGroupBox()
         controlsLayout.addWidget(self.processingSettingsGroupBox, stretch=1)
 
@@ -95,10 +91,7 @@ class WindowAreaWidget(QWidget):
                 RUNNING_TXT if checked else START_TXT
             )
         )
-        # Can't change audio settings while running.
-        self.startButton.toggled.connect(
-            lambda checked: self.audioSettingsGroupBox.setEnabled(not checked)
-        )
+        # Can't change processing settings while running.
         self.startButton.toggled.connect(
             lambda checked: self.processingSettingsGroupBox.setEnabled(not checked)
         )

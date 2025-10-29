@@ -90,20 +90,13 @@ rm ~/.local/share/applications/AVoc.desktop ~/.local/share/icons/hicolor/scalabl
 
 ## (Optional) Virtual Microphone
 
-To make a game take audio from the voice changer, the operating system needs to be configured to create a virtual microphone.
+The voice changer will latch to the actual default microphone, so a virtual microphone isn't needed.
 
-### Linux with PulseAudio
+But there are cases when you would want to configure your operating system to provide a virtual microphone:
 
-Add this to `~/.config/pulse/default.pa`:
-
-```
-load-module module-null-sink sink_name=voice-sink sink_properties=device.description=Voice_Sink
-load-module module-remap-source master=voice-sink.monitor source_name=voice-mic source_properties=device.description=Voice_Microphone
-```
-
-And re-login or restart PulseAudio with `pulseaudio -k`
-
-The Voice_Sink and Voice_Microphone devices will appear. Use the Voice_Sink as voice changer output, and use the Voice_Microphone as input for the game.
+- When you absolutely don't want to be heard without the voice changer when something crashes and reverts to the direct microphone input.
+- When you want to use the AVoc's QtMultimedia backend instead of its PipeWire backend (by uninstalling the pipewire-filtertools package from the Python environment).
+- When you're not on the Linux operating system.
 
 # Development
 

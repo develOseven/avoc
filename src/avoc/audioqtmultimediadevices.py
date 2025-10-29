@@ -2,7 +2,7 @@ from PySide6.QtCore import QByteArray
 from PySide6.QtMultimedia import QAudioFormat, QMediaDevices
 
 
-def getAudioDevicesForSampleRate(
+def getAudioQtMultimediaDevicesForSampleRate(
     sampleRate: int, isInput: bool
 ) -> dict[QByteArray, (str, bool)]:
     """Return compatible devices: id, readable name, a flag if it's the default device."""

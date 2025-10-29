@@ -17,7 +17,6 @@ from voiceconversion.common.deviceManager.DeviceManager import (
 )
 from voiceconversion.const import PitchExtractorType
 
-from .audiosettings import loadSampleRate
 from .handletooltipslider import HandleToolTipSlider
 
 F0_DET_PREFERENCES = [
@@ -32,8 +31,17 @@ F0_DET_PREFERENCES = [
 ]
 BACKEND_PREFERENCES = ["cuda", "directml", "mps", "cpu"]
 DEFAULT_SILENT_THRESHOLD = -90
-DEFAULT_CHUNK_SIZE = 22
+DEFAULT_CHUNK_SIZE = 16
 DEFAULT_EXTRA_CONVERT_SIZE = 3.0
+
+DEFAULT_SAMPLE_RATE = 48000
+SAMPLE_RATES = [
+    32000,
+    44100,
+    48000,
+    96000,
+    128000,
+]
 
 
 def getF0DetByPreference() -> list[str]:
@@ -82,6 +90,21 @@ def loadGpu() -> Tuple[int, DevicePresentation]:
     return index, devicesByPreference
 
 
+def loadSampleRate() -> Tuple[int, int]:
+    """:return: sample rate and its index in the SAMPLE_RATES list"""
+    processingSettings = QSettings()
+    processingSettings.beginGroup("ProcessingSettings")
+    savedSampleRate = processingSettings.value(
+        "sampleRate", DEFAULT_SAMPLE_RATE, type=int
+    )
+    assert type(savedSampleRate) is int
+    try:
+        index = SAMPLE_RATES.index(savedSampleRate)
+    except IndexError:
+        index = DEFAULT_SAMPLE_RATE
+    return SAMPLE_RATES[index], index
+
+
 class ProcessingSettingsGroupBox(QGroupBox):
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -124,14 +147,22 @@ class ProcessingSettingsGroupBox(QGroupBox):
             Qt.Orientation.Horizontal,
             formatToolTip=lambda v: f"{v*128*1000/loadSampleRate()[0]:.2f} ms",
         )
-        self.chunkSizeSpinBox = QSpinBox(minimum=8, maximum=256)
-        chunkSizeSlider.setMinimum(self.chunkSizeSpinBox.minimum())
-        chunkSizeSlider.setMaximum(self.chunkSizeSpinBox.maximum())
+        self.chunkSizeSpinBox = QSpinBox(minimum=8, maximum=256, singleStep=8)
+
+        def onChunkSizeSpinBoxEditingFinished():
+            step = self.chunkSizeSpinBox.singleStep()
+            value = self.chunkSizeSpinBox.value()
+            self.chunkSizeSpinBox.setValue((value // step) * step)
+
+        self.chunkSizeSpinBox.editingFinished.connect(onChunkSizeSpinBoxEditingFinished)
+
+        chunkSizeSlider.setMinimum(self.chunkSizeSpinBox.minimum() // 8)
+        chunkSizeSlider.setMaximum(self.chunkSizeSpinBox.maximum() // 8)
         chunkSizeSlider.valueChanged.connect(
-            lambda v: self.chunkSizeSpinBox.setValue(v)
+            lambda v: self.chunkSizeSpinBox.setValue(v * 8)
         )
         self.chunkSizeSpinBox.valueChanged.connect(
-            lambda v: chunkSizeSlider.setValue(v)
+            lambda v: chunkSizeSlider.setValue(v // 8)
         )
         processingSettingsLayout.addWidget(chunkSizeLabel, row, 0)
         processingSettingsLayout.addWidget(chunkSizeSlider, row, 1)
@@ -172,6 +203,10 @@ class ProcessingSettingsGroupBox(QGroupBox):
         self.gpuComboBox.addItems([d["name"] for d in devicesByPreference])
         processingSettingsLayout.addWidget(gpuLabel, row, 0)
         processingSettingsLayout.addWidget(self.gpuComboBox, row, 1, 1, 2)
+        row += 1
+        self.sampleRateComboBox = QComboBox()
+        processingSettingsLayout.addWidget(QLabel("Sample Rate"), row, 0)
+        processingSettingsLayout.addWidget(self.sampleRateComboBox, row, 1, 1, 2)
 
         self.setLayout(processingSettingsLayout)
 
@@ -222,4 +257,16 @@ class ProcessingSettingsGroupBox(QGroupBox):
 
         self.gpuComboBox.currentTextChanged.connect(
             lambda text: processingSettings.setValue("gpu", text)
+        )
+
+        for sampleRate in SAMPLE_RATES:
+            self.sampleRateComboBox.addItem(str(sampleRate))
+
+        _, index = loadSampleRate()
+        self.sampleRateComboBox.setCurrentIndex(index)
+
+        self.sampleRateComboBox.currentIndexChanged.connect(
+            lambda: processingSettings.setValue(
+                "sampleRate", int(self.sampleRateComboBox.currentText())
+            ),
         )

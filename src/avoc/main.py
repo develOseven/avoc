@@ -49,7 +49,13 @@ from voiceconversion.utils.VoiceChangerModel import AudioInOutFloat
 from voiceconversion.VoiceChangerSettings import VoiceChangerSettings
 from voiceconversion.VoiceChangerV2 import VoiceChangerV2
 
-from .audio import Audio
+from .audiobackends import HAS_PIPEWIRE
+
+if HAS_PIPEWIRE:
+    from .audiopipewire import AudioPipeWire
+else:
+    from .audioqtmultimedia import AudioQtMultimedia
+
 from .customizeui import DEFAULT_CACHED_MODELS_COUNT, CustomizeUiWidget
 from .exceptionhook import qt_exception_hook
 from .exceptions import (
@@ -61,6 +67,7 @@ from .loadingoverlay import LoadingOverlay
 from .processingsettings import (
     DEFAULT_CHUNK_SIZE,
     DEFAULT_EXTRA_CONVERT_SIZE,
+    DEFAULT_SAMPLE_RATE,
     DEFAULT_SILENT_THRESHOLD,
     loadF0Det,
     loadGpu,
@@ -108,15 +115,29 @@ class MainWindow(QMainWindow):
 
         viewMenu.addAction(hideUiAction)
 
+        showMainWindowAction = QAction("Show Main Window", self)
+        showMainWindowAction.triggered.connect(
+            lambda: centralWidget.setCurrentWidget(self.windowAreaWidget)
+        )
+        showMainWindowAction.triggered.connect(
+            lambda: viewMenu.removeAction(showMainWindowAction)
+        )
+
         preferencesMenu = self.menuBar().addMenu("Preferences")
 
         custumizeUiAction = QAction("Customize...", self)
         custumizeUiAction.triggered.connect(
             lambda: centralWidget.setCurrentWidget(self.customizeUiWidget)
         )
-        self.customizeUiWidget.back.connect(
-            lambda: centralWidget.setCurrentWidget(self.windowAreaWidget)
+        custumizeUiAction.triggered.connect(
+            lambda: (
+                viewMenu.addAction(showMainWindowAction)
+                if centralWidget.currentWidget() == self.customizeUiWidget
+                and showMainWindowAction not in viewMenu.actions()
+                else None
+            )
         )
+        self.customizeUiWidget.back.connect(showMainWindowAction.trigger)
         centralWidget.addWidget(self.customizeUiWidget)
 
         centralWidget.setCurrentWidget(self.windowAreaWidget)
@@ -179,7 +200,7 @@ class MainWindow(QMainWindow):
             lambda: self.windowHandle().requestActivate()
         )
         quitAction = QAction("Quit AVoc", self)
-        quitAction.triggered.connect(lambda: QApplication.quit())
+        quitAction.triggered.connect(lambda: self.close())
         systemTrayMenu.addActions([activateWindowAction, configureKeybindingsAction])
         systemTrayMenu.addSeparator()
         systemTrayMenu.addAction(quitAction)
@@ -196,6 +217,11 @@ class MainWindow(QMainWindow):
             self.close()  # closes the window (quits the app if it's the last window)
         else:
             super().keyPressEvent(event)
+
+    def closeEvent(self, event):
+        if self.vcm is not None and self.vcm.audio is not None:
+            self.vcm.audio.exit()
+        super().closeEvent(event)
 
     def showTrayMessage(
         self, title: str, msg: str, icon: QIcon | QPixmap | None = None
@@ -222,7 +248,7 @@ class VoiceChangerManager(QObject):
 
         self.modelDir = modelDir
         self.pretrainDir = pretrainDir
-        self.audio: Audio | None = None
+        self.audio: AudioQtMultimedia | AudioPipeWire | None = None
 
         self.modelSlotManager = ModelSlotManager.get_instance(
             self.modelDir, "upload_dir"
@@ -232,16 +258,17 @@ class VoiceChangerManager(QObject):
 
     def getVoiceChangerSettings(self) -> Tuple[VoiceChangerSettings, ModelSlots | None]:
         voiceChangerSettings = VoiceChangerSettings()
-        audioSettings = QSettings()
-        audioSettings.beginGroup("AudioSettings")
         processingSettings = QSettings()
         processingSettings.beginGroup("ProcessingSettings")
+        sampleRate = processingSettings.value(
+            "sampleRate", DEFAULT_SAMPLE_RATE, type=int
+        )
         gpuIndex, devices = loadGpu()
         f0DetIndex, f0Detectors = loadF0Det()
         voiceChangerSettingsDict = {
             "version": "v1",
-            "inputSampleRate": int(audioSettings.value("sampleRate")),
-            "outputSampleRate": int(audioSettings.value("sampleRate")),
+            "inputSampleRate": sampleRate,
+            "outputSampleRate": sampleRate,
             "gpu": devices[gpuIndex]["id"],
             "extraConvertSize": processingSettings.value(
                 "extraConvertSize", DEFAULT_EXTRA_CONVERT_SIZE, type=float
@@ -446,23 +473,36 @@ class VoiceChangerManager(QObject):
 
         if running:
             self.initialize()
-            audioSettings = QSettings()
-            audioSettings.beginGroup("AudioSettings")
             processingSettings = QSettings()
             processingSettings.beginGroup("ProcessingSettings")
             chunkSize = processingSettings.value(
                 "chunkSize", DEFAULT_CHUNK_SIZE, type=int
             )
             assert type(chunkSize) is int
-            self.audio = Audio(
-                audioSettings.value("audioInputDevice"),
-                audioSettings.value("audioOutputDevice"),
-                audioSettings.value("sampleRate"),
-                chunkSize * 128,
-                self.changeVoice,
-            )  # TODO: pass settings
-            self.audio.voiceChangerFilter.passThrough = passThrough
+            sampleRate = processingSettings.value(
+                "sampleRate", DEFAULT_SAMPLE_RATE, type=int
+            )
+            assert type(sampleRate) is int
+            if HAS_PIPEWIRE:
+                self.audio = AudioPipeWire(
+                    sampleRate,
+                    chunkSize * 128,
+                    self.changeVoice,
+                )
+            else:
+                audioQtMultimediaSettings = QSettings()
+                audioQtMultimediaSettings.beginGroup("AudioQtMultimediaSettings")
+                self.audio = AudioQtMultimedia(
+                    audioQtMultimediaSettings.value("audioInputDevice"),
+                    audioQtMultimediaSettings.value("audioOutputDevice"),
+                    sampleRate,
+                    chunkSize * 128,
+                    self.changeVoice,
+                )
+            # self.audio.voiceChangerFilter.passThrough = passThrough
         else:
+            assert self.audio is not None
+            self.audio.exit()
             self.audio = None
 
     def changeVoice(
@@ -579,14 +619,14 @@ def main():
 
     clParser.process(app)
 
+    window = MainWindow()
+    window.setWindowTitle("AVoc")
+
     # Let Ctrl+C in terminal close the application.
-    signal.signal(signal.SIGINT, lambda *args: QApplication.quit())
+    signal.signal(signal.SIGINT, lambda *args: window.close())
     timer = QTimer()
     timer.start(250)
     timer.timeout.connect(lambda: None)  # Let the interpreter run each 250 ms.
-
-    window = MainWindow()
-    window.setWindowTitle("AVoc")
 
     splash = QSplashScreen(QPixmap(iconFilePath))
     splash.show()  # Order is important.
@@ -622,6 +662,13 @@ def main():
     window.vcm = VoiceChangerManager(
         window.windowAreaWidget.modelDir, pretrainDir, longOperationCm
     )
+    customizeUiWidget = window.customizeUiWidget
+    if not HAS_PIPEWIRE:
+        window.windowAreaWidget.startButton.toggled.connect(
+            lambda checked: customizeUiWidget.audioQtMultimediaSettingsGroupBox.setEnabled(
+                not checked
+            )
+        )
     window.windowAreaWidget.startButton.toggled.connect(
         lambda checked: window.vcm.setRunning(
             checked,
@@ -694,11 +741,6 @@ def main():
     window.vcm.modelUpdated.connect(
         lambda slot: window.windowAreaWidget.voiceCards.onVoiceCardUpdated(slot),
     )
-
-    audioSettingsGroupBox = window.windowAreaWidget.audioSettingsGroupBox
-    audioSettingsGroupBox.sampleRateComboBox.currentIndexChanged.connect(
-        lambda: window.vcm.initialize()
-    )  # It isn't running when changing sample rate.
 
     # Load the current voice model if any.
     if not clParser.isSet(noModelLoadOption):
