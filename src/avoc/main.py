@@ -357,23 +357,21 @@ class VoiceChangerManager(QObject):
             voiceChangerSettings.disableJit,
         )
 
-        self.vcs.append(VoiceChangerV2(voiceChangerSettings))
+        newVcs = VoiceChangerV2(voiceChangerSettings)
 
         if slotInfo is not None and slotInfo.voiceChangerType is not None:
-            if slotInfo.voiceChangerType == self.vcs[-1].get_type():
-                self.vcs[-1].set_slot_info(
+            if slotInfo.voiceChangerType == newVcs.get_type():
+                newVcs.set_slot_info(
                     slotInfo,
                     self.pretrainDir,
                 )
                 # TODO: unify changing properties that don't need reinit.
-                self.vcs[-1].vcmodel.settings.tran = slotInfo.defaultTune
-                self.vcs[-1].vcmodel.settings.formantShift = (
-                    slotInfo.defaultFormantShift
-                )
-                self.vcs[-1].vcmodel.settings.indexRatio = slotInfo.defaultIndexRatio
+                newVcs.vcmodel.settings.tran = slotInfo.defaultTune
+                newVcs.vcmodel.settings.formantShift = slotInfo.defaultFormantShift
+                newVcs.vcmodel.settings.indexRatio = slotInfo.defaultIndexRatio
             elif slotInfo.voiceChangerType == "RVC":
                 logger.info("Loading RVC...")
-                self.vcs[-1].initialize(
+                newVcs.initialize(
                     RVCr2(
                         self.modelDir,
                         os.path.join(self.pretrainDir, CONTENT_VEC_500_ONNX),
@@ -386,6 +384,8 @@ class VoiceChangerManager(QObject):
                 logger.error(
                     f"Unknown voice changer model: {slotInfo.voiceChangerType}"
                 )
+
+        self.vcs.append(newVcs)
 
     def setModelSettings(
         self,

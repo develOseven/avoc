@@ -46,7 +46,7 @@ class CustomizeUiWidget(QWidget):
         )
         cachedModelsCountlayout.addWidget(cachedModelsCountLabel)
 
-        cachedModelsCountSpinBox = QSpinBox(minimum=0, maximum=256)
+        cachedModelsCountSpinBox = QSpinBox(minimum=1, maximum=256)
         cachedModelsCount = interfaceSettings.value(
             "cachedModelsCount", DEFAULT_CACHED_MODELS_COUNT, type=int
         )
