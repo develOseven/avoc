@@ -35,10 +35,7 @@ from voiceconversion.common.deviceManager.DeviceManager import (
     with_device_manager_context,
 )
 from voiceconversion.data.ModelSlot import ModelSlots
-from voiceconversion.downloader.WeightDownloader import (
-    CONTENT_VEC_500_ONNX,
-    downloadWeight,
-)
+from voiceconversion.downloader.WeightDownloader import downloadWeight
 from voiceconversion.ModelSlotManager import ModelSlotManager
 from voiceconversion.RVC.RVCModelSlotGenerator import (
     RVCModelSlotGenerator,  # Parameters cannot be obtained when imported at startup.
@@ -374,7 +371,6 @@ class VoiceChangerManager(QObject):
                 newVcs.initialize(
                     RVCr2(
                         self.modelDir,
-                        os.path.join(self.pretrainDir, CONTENT_VEC_500_ONNX),
                         slotInfo,
                         voiceChangerSettings,
                     ),
