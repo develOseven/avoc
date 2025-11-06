@@ -53,7 +53,7 @@ class CustomizeUiWidget(QWidget):
         assert type(cachedModelsCount) is int
         cachedModelsCountSpinBox.setValue(cachedModelsCount)
         cachedModelsCountSpinBox.valueChanged.connect(
-            lambda chunkSize: interfaceSettings.setValue(
+            lambda cachedModelsCount: interfaceSettings.setValue(
                 "cachedModelsCount", cachedModelsCount
             )
         )

@@ -1,12 +1,10 @@
 import asyncio
 import logging
 import os
-import shutil
 import signal
 import sys
 from contextlib import AbstractContextManager, contextmanager
 from traceback import format_exc
-from typing import Tuple
 
 import numpy as np
 from PySide6.QtCore import (
@@ -34,16 +32,14 @@ from voiceconversion.common.deviceManager.DeviceManager import (
     DeviceManager,
     with_device_manager_context,
 )
-from voiceconversion.data.ModelSlot import ModelSlots
+from voiceconversion.data.imported_model_info import RVCImportedModelInfo
 from voiceconversion.downloader.WeightDownloader import downloadWeight
-from voiceconversion.ModelSlotManager import ModelSlotManager
-from voiceconversion.RVC.RVCModelSlotGenerator import (
-    RVCModelSlotGenerator,  # Parameters cannot be obtained when imported at startup.
-)
+from voiceconversion.imported_model_info_manager import ImportedModelInfoManager
 from voiceconversion.RVC.RVCr2 import RVCr2
-from voiceconversion.utils.LoadModelParams import LoadModelParams
+from voiceconversion.utils.import_model import import_model
+from voiceconversion.utils.import_model_params import ImportModelParams
 from voiceconversion.utils.VoiceChangerModel import AudioInOutFloat
-from voiceconversion.VoiceChangerSettings import VoiceChangerSettings
+from voiceconversion.voice_changer_settings import VoiceChangerSettings
 from voiceconversion.VoiceChangerV2 import VoiceChangerV2
 
 from .audiobackends import HAS_PIPEWIRE
@@ -69,10 +65,12 @@ from .processingsettings import (
     loadF0Det,
     loadGpu,
 )
+from .voicecardsmanager import VoiceCardsManager
 from .windowarea import WindowAreaWidget
 
 PRETRAIN_DIR_NAME = "pretrain"
 MODEL_DIR_NAME = "model_dir"
+VOICE_CARDS_DIR_NAME = "voice_cards_dir"
 
 stream_handler = logging.StreamHandler()
 stream_handler.setLevel(logging.INFO)
@@ -95,13 +93,15 @@ DISABLE_PASS_THROUGH_KEYBIND_ID = "disable_pass_through"
 
 
 class MainWindow(QMainWindow):
-    def initialize(self, modelDir: str):
+    closed = Signal()
+
+    def initialize(self, voiceCardsManager: VoiceCardsManager):
         centralWidget = QStackedWidget()
         self.loadingOverlay = LoadingOverlay(centralWidget)
         self.loadingOverlay.hide()
         self.setCentralWidget(centralWidget)
 
-        self.windowAreaWidget = WindowAreaWidget(modelDir)
+        self.windowAreaWidget = WindowAreaWidget(voiceCardsManager)
         centralWidget.addWidget(self.windowAreaWidget)
 
         self.customizeUiWidget = CustomizeUiWidget()
@@ -205,10 +205,6 @@ class MainWindow(QMainWindow):
         self.systemTrayIcon.setToolTip(self.windowTitle())
         self.systemTrayIcon.show()
 
-        self.vcm: VoiceChangerManager | None = (
-            None  # TODO: remove the no-model-load CLI arg
-        )
-
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:
             self.close()  # closes the window (quits the app if it's the last window)
@@ -216,8 +212,7 @@ class MainWindow(QMainWindow):
             super().keyPressEvent(event)
 
     def closeEvent(self, event):
-        if self.vcm is not None and self.vcm.audio is not None:
-            self.vcm.audio.exit()
+        self.closed.emit()
         super().closeEvent(event)
 
     def showTrayMessage(
@@ -231,30 +226,66 @@ class MainWindow(QMainWindow):
             )
 
 
+@with_device_manager_context
+def appendVoiceChanger(
+    voiceChangerSettings: VoiceChangerSettings,
+    pretrainDir: str,
+) -> VoiceChangerV2:
+    DeviceManager.get_instance().initialize(
+        voiceChangerSettings.gpu,
+        voiceChangerSettings.forceFp32,
+        voiceChangerSettings.disableJit,
+    )
+
+    newVcs = VoiceChangerV2(voiceChangerSettings)
+
+    logger.info("Loading RVC...")
+    newVcs.initialize(
+        RVCr2(
+            voiceChangerSettings,
+        ),
+        pretrainDir,
+    )
+    return newVcs
+
+
 class VoiceChangerManager(QObject):
 
     modelUpdated = Signal(int)
     modelSettingsLoaded = Signal(int, float, float)
 
     def __init__(
-        self, modelDir: str, pretrainDir: str, longOperationCm: AbstractContextManager
+        self,
+        voiceCardsManager: VoiceCardsManager,
+        pretrainDir: str,
+        longOperationCm: AbstractContextManager,
     ):
         super().__init__()
 
         self.vcs: list[VoiceChangerV2] = []
+        self.vcLoaded = False
 
-        self.modelDir = modelDir
+        self.voiceCardsManager = voiceCardsManager
         self.pretrainDir = pretrainDir
         self.audio: AudioQtMultimedia | AudioPipeWire | None = None
 
-        self.modelSlotManager = ModelSlotManager.get_instance(
-            self.modelDir, "upload_dir"
-        )  # TODO: fix the dir
-
         self.longOperationCm = longOperationCm
 
-    def getVoiceChangerSettings(self) -> Tuple[VoiceChangerSettings, ModelSlots | None]:
-        voiceChangerSettings = VoiceChangerSettings()
+    def getVoiceChangerSettings(
+        self, voiceCardIndex: int
+    ) -> VoiceChangerSettings | None:
+        importedModelInfo = self.voiceCardsManager.get(voiceCardIndex)
+        if importedModelInfo is None:
+            logger.warning(f"Voice card is not found {voiceCardIndex}")
+            return None
+
+        if importedModelInfo.voiceChangerType != "RVC":
+            logger.error(
+                f"Unknown voice changer model type: {importedModelInfo.voiceChangerType}"
+            )
+            return None
+        assert type(importedModelInfo) is RVCImportedModelInfo
+
         processingSettings = QSettings()
         processingSettings.beginGroup("ProcessingSettings")
         sampleRate = processingSettings.value(
@@ -262,60 +293,41 @@ class VoiceChangerManager(QObject):
         )
         gpuIndex, devices = loadGpu()
         f0DetIndex, f0Detectors = loadF0Det()
-        voiceChangerSettingsDict = {
-            "version": "v1",
-            "inputSampleRate": sampleRate,
-            "outputSampleRate": sampleRate,
-            "gpu": devices[gpuIndex]["id"],
-            "extraConvertSize": processingSettings.value(
+
+        return VoiceChangerSettings(
+            inputSampleRate=sampleRate,
+            outputSampleRate=sampleRate,
+            gpu=devices[gpuIndex]["id"],
+            extraConvertSize=processingSettings.value(
                 "extraConvertSize", DEFAULT_EXTRA_CONVERT_SIZE, type=float
             ),
-            "serverReadChunkSize": processingSettings.value(
+            serverReadChunkSize=processingSettings.value(
                 "chunkSize", DEFAULT_CHUNK_SIZE, type=int
             ),
-            "crossFadeOverlapSize": 0.1,
+            crossFadeOverlapSize=0.1,
             # Avoid conversions, assume TF32 is ON internally.
             # TODO: test delay. Maybe FP16 if no TF32 available.
-            "forceFp32": True,
-            "disableJit": 0,
-            "enableServerAudio": 1,
-            "exclusiveMode": 0,
-            "asioInputChannel": -1,
-            "asioOutputChannel": -1,
-            "dstId": 0,
-            "f0Detector": f0Detectors[f0DetIndex],
-            "tran": 0,
-            "formantShift": 0.0,
-            "useONNX": 0,
-            "silentThreshold": processingSettings.value(
+            forceFp32=True,
+            disableJit=0,
+            dstId=0,
+            f0Detector=f0Detectors[f0DetIndex],
+            silentThreshold=processingSettings.value(
                 "silentThreshold", DEFAULT_SILENT_THRESHOLD, type=int
             ),
-            "indexRatio": 0.0,
-            "protect": 0.5,
-            "silenceFront": 1,
-        }
-
-        interfaceSettings = QSettings()
-        interfaceSettings.beginGroup("InterfaceSettings")
-        modelSlotIndex = interfaceSettings.value("currentVoiceCardIndex", 0, type=int)
-        assert type(modelSlotIndex) is int
-        slotInfo = self.modelSlotManager.get_slot_info(modelSlotIndex)
-
-        if slotInfo is not None and slotInfo.voiceChangerType is not None:
-            voiceChangerSettingsDict["modelSlotIndex"] = modelSlotIndex
-            voiceChangerSettingsDict["tran"] = slotInfo.defaultTune
-            voiceChangerSettingsDict["formantShift"] = slotInfo.defaultFormantShift
-            voiceChangerSettingsDict["indexRatio"] = slotInfo.defaultIndexRatio
-            voiceChangerSettingsDict["protect"] = slotInfo.defaultProtect
-        else:
-            logger.warning(f"Model slot is not found {modelSlotIndex}")
-
-        voiceChangerSettings.set_properties(voiceChangerSettingsDict)
-
-        return voiceChangerSettings, slotInfo
+            silenceFront=1,
+            rvcImportedModelInfo=importedModelInfo,
+        )
 
     def initialize(self):
-        voiceChangerSettings, slotInfo = self.getVoiceChangerSettings()
+        interfaceSettings = QSettings()
+        interfaceSettings.beginGroup("InterfaceSettings")
+        voiceCardIndex = interfaceSettings.value("currentVoiceCardIndex", 0, type=int)
+        assert type(voiceCardIndex) is int
+
+        voiceChangerSettings = self.getVoiceChangerSettings(voiceCardIndex)
+        if voiceChangerSettings is None:
+            self.vcLoaded = False
+            return
 
         try:
             index = next(
@@ -326,7 +338,11 @@ class VoiceChangerManager(QObject):
             tmp = self.vcs[index]
             self.vcs[index] = self.vcs[-1]
             self.vcs[-1] = tmp
+            foundInCache = True
         except StopIteration:
+            foundInCache = False
+
+        if not foundInCache:
             interfaceSettings = QSettings()
             interfaceSettings.beginGroup("InterfaceSettings")
             cachedModelsCount = interfaceSettings.value(
@@ -335,53 +351,18 @@ class VoiceChangerManager(QObject):
             assert type(cachedModelsCount) is int
             self.vcs = self.vcs[-cachedModelsCount:]
             with self.longOperationCm():
-                self.appendVoiceChanger(voiceChangerSettings, slotInfo)
+                newVcs = appendVoiceChanger(voiceChangerSettings, self.pretrainDir)
+                self.vcs.append(newVcs)
 
-        if slotInfo is not None and slotInfo.voiceChangerType is not None:
-            self.modelSettingsLoaded.emit(
-                slotInfo.defaultTune,
-                slotInfo.defaultFormantShift,
-                slotInfo.defaultIndexRatio,
-            )
-
-    @with_device_manager_context
-    def appendVoiceChanger(
-        self, voiceChangerSettings: VoiceChangerSettings, slotInfo: ModelSlots
-    ) -> None:
-        DeviceManager.get_instance().initialize(
-            voiceChangerSettings.gpu,
-            voiceChangerSettings.forceFp32,
-            voiceChangerSettings.disableJit,
+        importedModelInfo = self.voiceCardsManager.get(voiceCardIndex)
+        assert type(importedModelInfo) is RVCImportedModelInfo
+        self.modelSettingsLoaded.emit(
+            importedModelInfo.defaultTune,
+            importedModelInfo.defaultFormantShift,
+            importedModelInfo.defaultIndexRatio,
         )
 
-        newVcs = VoiceChangerV2(voiceChangerSettings)
-
-        if slotInfo is not None and slotInfo.voiceChangerType is not None:
-            if slotInfo.voiceChangerType == newVcs.get_type():
-                newVcs.set_slot_info(
-                    slotInfo,
-                    self.pretrainDir,
-                )
-                # TODO: unify changing properties that don't need reinit.
-                newVcs.vcmodel.settings.tran = slotInfo.defaultTune
-                newVcs.vcmodel.settings.formantShift = slotInfo.defaultFormantShift
-                newVcs.vcmodel.settings.indexRatio = slotInfo.defaultIndexRatio
-            elif slotInfo.voiceChangerType == "RVC":
-                logger.info("Loading RVC...")
-                newVcs.initialize(
-                    RVCr2(
-                        self.modelDir,
-                        slotInfo,
-                        voiceChangerSettings,
-                    ),
-                    self.pretrainDir,
-                )
-            else:
-                logger.error(
-                    f"Unknown voice changer model: {slotInfo.voiceChangerType}"
-                )
-
-        self.vcs.append(newVcs)
+        self.vcLoaded = True
 
     def setModelSettings(
         self,
@@ -391,77 +372,34 @@ class VoiceChangerManager(QObject):
     ):
         interfaceSettings = QSettings()
         interfaceSettings.beginGroup("InterfaceSettings")
-        modelSlotIndex = interfaceSettings.value("currentVoiceCardIndex", 0, type=int)
-        assert type(modelSlotIndex) is int
-        slotInfo = self.modelSlotManager.get_slot_info(modelSlotIndex)
-        if slotInfo is None or slotInfo.voiceChangerType is None:
-            logger.warning(f"Model slot is not found {modelSlotIndex}")
+        voiceCardIndex = interfaceSettings.value("currentVoiceCardIndex", 0, type=int)
+        assert type(voiceCardIndex) is int
+        importedModelInfo = self.voiceCardsManager.get(voiceCardIndex)
+        if importedModelInfo is None:
+            logger.warning(f"Voice card is not found {voiceCardIndex}")
             return
 
-        slotInfo.defaultTune = pitch
-        slotInfo.defaultFormantShift = formantShift
-        slotInfo.defaultIndexRatio = index
+        importedModelInfo.defaultTune = pitch
+        importedModelInfo.defaultFormantShift = formantShift
+        importedModelInfo.defaultIndexRatio = index
 
-        if self.vcs and self.vcs[-1].vcmodel is not None:
-            # TODO: unify changing properties that don't need reinit.
-            self.vcs[-1].vcmodel.settings.tran = slotInfo.defaultTune
-            self.vcs[-1].vcmodel.settings.formantShift = slotInfo.defaultFormantShift
-            self.vcs[-1].vcmodel.settings.indexRatio = slotInfo.defaultIndexRatio
+        if self.vcLoaded:
+            assert type(self.vcs[-1].vcmodel) is RVCr2
+            self.vcs[-1].vcmodel.settings.rvcImportedModelInfo = importedModelInfo
 
-        self.modelSlotManager.save_model_slot(modelSlotIndex, slotInfo)
+        self.voiceCardsManager.save(importedModelInfo)
 
-    def renumberSlots(
-        self,
-        sourceStart: int,
-        sourceEnd: int,
-        destinationRow: int,
-    ):
-        if destinationRow > sourceEnd:
-            blockSize = sourceEnd - sourceStart + 1
-            for vc in self.vcs:
-                oldIndex = vc.settings.get_property("modelSlotIndex")
-
-                if sourceStart <= oldIndex <= sourceEnd:
-                    newIndex = oldIndex + (destinationRow - sourceEnd - 1)
-                elif sourceEnd < oldIndex < destinationRow:
-                    newIndex = oldIndex - blockSize
-                else:
-                    newIndex = oldIndex
-
-                if newIndex != oldIndex:
-                    vc.settings.set_property("modelSlotIndex", newIndex)
-
-        elif destinationRow < sourceStart:
-            blockSize = sourceEnd - sourceStart + 1
-            for vc in self.vcs:
-                oldIndex = vc.settings.get_property("modelSlotIndex")
-
-                if sourceStart <= oldIndex <= sourceEnd:
-                    newIndex = oldIndex - (sourceStart - destinationRow)
-                elif destinationRow <= oldIndex < sourceStart:
-                    newIndex = oldIndex + blockSize
-                else:
-                    newIndex = oldIndex
-
-                if newIndex != oldIndex:
-                    vc.settings.set_property("modelSlotIndex", newIndex)
-
-    def removeSlots(self, first: int, last: int):
-        count = last - first + 1
-
+    def onRemoveVoiceCards(self):
         remaining = []
         for vc in self.vcs:
-            idx = vc.settings.get_property("modelSlotIndex")
-            if first <= idx <= last:
+            if (
+                self.voiceCardsManager.importedModelInfoManager.get(
+                    vc.settings.rvcImportedModelInfo.id
+                )
+                is None
+            ):
                 continue
-            remaining.append(vc)
         self.vcs = remaining
-
-        for vc in self.vcs:
-            oldIndex = vc.settings.get_property("modelSlotIndex")
-            if oldIndex > last:
-                new_index = oldIndex - count
-                vc.settings.set_property("modelSlotIndex", new_index)
 
     def setRunning(self, running: bool, passThrough: bool):
         if (self.audio is not None) == running:
@@ -495,6 +433,7 @@ class VoiceChangerManager(QObject):
                     chunkSize * 128,
                     self.changeVoice,
                 )
+            # TODO: bring back passThrough
             # self.audio.voiceChangerFilter.passThrough = passThrough
         else:
             assert self.audio is not None
@@ -504,6 +443,15 @@ class VoiceChangerManager(QObject):
     def changeVoice(
         self, receivedData: AudioInOutFloat
     ) -> tuple[AudioInOutFloat, float, list[int], tuple | None]:
+        if not self.vcLoaded:
+            return (
+                np.zeros(1, dtype=np.float32),
+                0,
+                [0, 0, 0],
+                ("VoiceChangerIsNotSelectedException", ""),
+            )
+            # TODO: check for exception, remove NotSelectedException from lib
+
         try:
             audio, vol, perf = self.vcs[-1].on_request(receivedData)
             return audio, vol, perf, None
@@ -532,63 +480,19 @@ class VoiceChangerManager(QObject):
                 ("Exception", format_exc()),
             )
 
-    def importModel(self, params: LoadModelParams):
-        slotDir = os.path.join(
-            self.modelDir,
-            str(params.slot),
+    def importModel(self, voiceCardIndex: int, params: ImportModelParams):
+        importedModelInfo = import_model(
+            self.voiceCardsManager.importedModelInfoManager,
+            params,
+            self.voiceCardsManager.get(voiceCardIndex),
         )
+        if importedModelInfo is not None:
+            self.voiceCardsManager.set(voiceCardIndex, importedModelInfo)
+            self.modelUpdated.emit(voiceCardIndex)
 
-        iconFile = ""
-        if os.path.isdir(slotDir):
-            # Replacing existing model, delete everything except for the icon.
-            slotInfo = self.modelSlotManager.get_slot_info(params.slot)
-            iconFile = slotInfo.iconFile
-            for entry in os.listdir(slotDir):
-                if entry != iconFile:
-                    filePath = os.path.join(slotDir, entry)
-                    if os.path.isdir(filePath):
-                        shutil.rmtree(filePath)
-                    else:
-                        os.remove(filePath)
-
-        for file in params.files:
-            logger.info(f"FILE: {file}")
-            srcPath = os.path.join(file.dir, file.name)
-            dstDir = os.path.join(
-                self.modelDir,
-                str(params.slot),
-                file.dir,
-            )
-            dstPath = os.path.join(dstDir, os.path.basename(file.name))
-            os.makedirs(dstDir, exist_ok=True)
-            logger.info(f"Copying {srcPath} -> {dstPath}")
-            shutil.copy(srcPath, dstPath)
-            file.name = os.path.basename(dstPath)
-
-        if params.voiceChangerType == "RVC":
-            slotInfo = RVCModelSlotGenerator.load_model(params, self.modelDir)
-            self.modelSlotManager.save_model_slot(params.slot, slotInfo)
-
-        # Restore icon.
-        slotInfo = self.modelSlotManager.get_slot_info(params.slot)
-        slotInfo.iconFile = iconFile
-        self.modelSlotManager.save_model_slot(params.slot, slotInfo)
-
-        self.modelUpdated.emit(params.slot)
-
-    def setModelIcon(self, slot: int, iconFile: str):
-        iconFileBaseName = os.path.basename(iconFile)
-        storePath = os.path.join(self.modelDir, str(slot), iconFileBaseName)
-        try:
-            shutil.copy(iconFile, storePath)
-        except shutil.SameFileError:
-            pass
-        slotInfo = self.modelSlotManager.get_slot_info(slot)
-        if slotInfo.iconFile != "" and slotInfo.iconFile != iconFileBaseName:
-            os.remove(os.path.join(self.modelDir, str(slot), slotInfo.iconFile))
-        slotInfo.iconFile = iconFileBaseName
-        self.modelSlotManager.save_model_slot(slot, slotInfo)
-        self.modelUpdated.emit(slot)
+    def setVoiceCardIcon(self, voiceCardIndex: int, iconFile: str):
+        self.voiceCardsManager.setIcon(voiceCardIndex, iconFile)
+        self.modelUpdated.emit(voiceCardIndex)
 
 
 def main():
@@ -641,8 +545,17 @@ def main():
     pretrainDir = os.path.join(appLocalDataLocation, PRETRAIN_DIR_NAME)
     asyncio.run(downloadWeight(pretrainDir))
 
+    importedModelInfoManager = ImportedModelInfoManager(
+        os.path.join(appLocalDataLocation, MODEL_DIR_NAME)
+    )
+
+    voiceCardsManager = VoiceCardsManager(
+        importedModelInfoManager,
+        os.path.join(appLocalDataLocation, VOICE_CARDS_DIR_NAME),
+    )
+
     # Lay out the window.
-    window.initialize(os.path.join(appLocalDataLocation, MODEL_DIR_NAME))
+    window.initialize(voiceCardsManager)
 
     @contextmanager
     def longOperationCm():
@@ -651,31 +564,30 @@ def main():
             app.processEvents()
             yield
         finally:
-            window.vcm.initialize()
             window.loadingOverlay.hide()
 
     # Create the voice changer and connect it to the controls.
-    window.vcm = VoiceChangerManager(
-        window.windowAreaWidget.modelDir, pretrainDir, longOperationCm
-    )
-    customizeUiWidget = window.customizeUiWidget
+    vcm = VoiceChangerManager(voiceCardsManager, pretrainDir, longOperationCm)
+    window.closed.connect(lambda: vcm.audio.exit() if vcm.audio is not None else None)
+
     if not HAS_PIPEWIRE:
+        cuiw = window.customizeUiWidget
         window.windowAreaWidget.startButton.toggled.connect(
-            lambda checked: customizeUiWidget.audioQtMultimediaSettingsGroupBox.setEnabled(
+            lambda checked: cuiw.audioQtMultimediaSettingsGroupBox.setEnabled(
                 not checked
             )
         )
     window.windowAreaWidget.startButton.toggled.connect(
-        lambda checked: window.vcm.setRunning(
+        lambda checked: vcm.setRunning(
             checked,
             window.windowAreaWidget.passThroughButton.isChecked(),
         )
     )
 
     def setPassThrough(passThrough: bool):
-        if window.vcm.audio is not None:
-            if window.vcm.audio.voiceChangerFilter.passThrough != passThrough:
-                window.vcm.audio.voiceChangerFilter.passThrough = passThrough
+        if vcm.audio is not None:
+            if vcm.audio.voiceChangerFilter.passThrough != passThrough:
+                vcm.audio.voiceChangerFilter.passThrough = passThrough
                 window.showTrayMessage(
                     window.windowTitle(),
                     f"Pass Through {"On" if passThrough else "Off"}",
@@ -686,7 +598,7 @@ def main():
     modelSettingsGroupBox = window.windowAreaWidget.modelSettingsGroupBox
 
     def onModelSettingsChanged():
-        window.vcm.setModelSettings(
+        vcm.setModelSettings(
             pitch=modelSettingsGroupBox.pitchSpinBox.value(),
             formantShift=modelSettingsGroupBox.formantShiftDoubleSpinBox.value(),
             index=modelSettingsGroupBox.indexDoubleSpinBox.value(),
@@ -699,7 +611,7 @@ def main():
 
     def onVoiceCardChanged() -> None:
         modelSettingsGroupBox.changed.disconnect(onModelSettingsChanged)
-        window.vcm.initialize()
+        vcm.initialize()
         modelSettingsGroupBox.changed.connect(onModelSettingsChanged)
         if bool(interfaceSettings.value("showNotifications", True)):
             voiceCardWidget: QLabel = window.windowAreaWidget.voiceCards.itemWidget(
@@ -717,31 +629,25 @@ def main():
         modelSettingsGroupBox.formantShiftDoubleSpinBox.setValue(formantShift)
         modelSettingsGroupBox.indexDoubleSpinBox.setValue(index)
 
-    window.vcm.modelSettingsLoaded.connect(onModelSettingsLoaded)
+    vcm.modelSettingsLoaded.connect(onModelSettingsLoaded)
 
     window.windowAreaWidget.voiceCards.currentRowChanged.connect(onVoiceCardChanged)
-    window.windowAreaWidget.cardsMoved.connect(
-        window.vcm.modelSlotManager.renumberSlots
-    )
-    window.windowAreaWidget.cardsMoved.connect(window.vcm.renumberSlots)
+
+    window.windowAreaWidget.cardMoved.connect(voiceCardsManager.moveCard)
+
+    window.windowAreaWidget.cardsRemoved.connect(voiceCardsManager.removeCard)
     window.windowAreaWidget.cardsRemoved.connect(
-        window.vcm.modelSlotManager.removeSlots
+        lambda first, last: vcm.onRemoveVoiceCards()
     )
-    window.windowAreaWidget.cardsRemoved.connect(window.vcm.removeSlots)
-    window.windowAreaWidget.voiceCards.droppedModelFiles.connect(
-        lambda loadModelParams: window.vcm.importModel(loadModelParams)
-    )
-    window.windowAreaWidget.voiceCards.droppedIconFile.connect(
-        lambda slot, iconFile: window.vcm.setModelIcon(slot, iconFile)
-    )
-    window.vcm.modelUpdated.connect(
-        lambda slot: window.windowAreaWidget.voiceCards.onVoiceCardUpdated(slot),
-    )
+
+    window.windowAreaWidget.voiceCards.droppedModelFiles.connect(vcm.importModel)
+    window.windowAreaWidget.voiceCards.droppedIconFile.connect(vcm.setVoiceCardIcon)
+    vcm.modelUpdated.connect(window.windowAreaWidget.voiceCards.onVoiceCardUpdated)
 
     # Load the current voice model if any.
     if not clParser.isSet(noModelLoadOption):
-        window.vcm.initialize()
-        if window.vcm.vcs[-1].vcmodel is not None:
+        vcm.initialize()
+        if vcm.vcLoaded:
             # Immediately start if it was saved in settings.
             interfaceSettings = QSettings()
             interfaceSettings.beginGroup("InterfaceSettings")
