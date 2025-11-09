@@ -421,7 +421,10 @@ class VoiceChangerManager(QObject):
             )
             assert type(sampleRate) is int
             if HAS_PIPEWIRE:
+                audioPipeWireSettings = QSettings()
+                audioPipeWireSettings.beginGroup("AudioPipeWireSettings")
                 self.audio = AudioPipeWire(
+                    bool(audioPipeWireSettings.value("autoLink", True)),
                     sampleRate,
                     chunkSize * 128,
                     self.changeVoice,
@@ -573,18 +576,25 @@ def main():
     vcm = VoiceChangerManager(voiceCardsManager, pretrainDir, longOperationCm)
     window.closed.connect(lambda: vcm.audio.exit() if vcm.audio is not None else None)
 
-    if not HAS_PIPEWIRE:
-        cuiw = window.customizeUiWidget
-        window.windowAreaWidget.startButton.toggled.connect(
-            lambda checked: cuiw.audioQtMultimediaSettingsGroupBox.setEnabled(
-                not checked
-            )
-        )
     window.windowAreaWidget.startButton.toggled.connect(
         lambda checked: vcm.setRunning(
             checked,
             window.windowAreaWidget.passThroughButton.isChecked(),
         )
+    )
+
+    def onAudioRunning(startButtonChecked: bool):
+        cuiw = window.customizeUiWidget
+        if HAS_PIPEWIRE:
+            if startButtonChecked:
+                cuiw.audioPipeWireSettingsGroupBox.autoLinkCheckBox.toggled.connect(
+                    vcm.audio.setAutoLink
+                )
+        else:
+            cuiw.audioQtMultimediaSettingsGroupBox.setEnabled(not startButtonChecked)
+
+    window.windowAreaWidget.startButton.toggled.connect(
+        onAudioRunning, Qt.ConnectionType.UniqueConnection
     )
 
     def setPassThrough(passThrough: bool):
@@ -657,6 +667,7 @@ def main():
             running = interfaceSettings.value("running", False, type=bool)
             assert type(running) is bool
             window.windowAreaWidget.startButton.setChecked(running)
+            onAudioRunning(running)
             window.windowAreaWidget.startButton.toggled.connect(
                 lambda checked: interfaceSettings.setValue("running", checked)
             )

@@ -11,7 +11,9 @@ from PySide6.QtWidgets import (
 
 from .audiobackends import HAS_PIPEWIRE
 
-if not HAS_PIPEWIRE:
+if HAS_PIPEWIRE:
+    from .audiopipewiresettings import AudioPipeWireSettingsGroupBox
+else:
     from .audioqtmultimediasettings import AudioQtMultimediaSettingsGroupBox
 
 DEFAULT_CACHED_MODELS_COUNT = 1
@@ -59,7 +61,10 @@ class CustomizeUiWidget(QWidget):
         )
         cachedModelsCountlayout.addWidget(cachedModelsCountSpinBox)
 
-        if not HAS_PIPEWIRE:
+        if HAS_PIPEWIRE:
+            self.audioPipeWireSettingsGroupBox = AudioPipeWireSettingsGroupBox()
+            layout.addWidget(self.audioPipeWireSettingsGroupBox)
+        else:
             self.audioQtMultimediaSettingsGroupBox = AudioQtMultimediaSettingsGroupBox()
             layout.addWidget(self.audioQtMultimediaSettingsGroupBox)
 

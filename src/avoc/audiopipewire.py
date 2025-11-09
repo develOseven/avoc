@@ -7,6 +7,7 @@ from typing import Callable
 
 import numpy as np
 import pipewire_filtertools as pfts
+from PySide6.QtCore import QObject
 from voiceconversion.utils.VoiceChangerModel import AudioInOutFloat
 
 DELAY_WINDOW_SIZE_BLOCKS = 16
@@ -24,6 +25,7 @@ class LoopCtx(ctypes.Structure):
 def run(
     loop: ctypes.c_void_p,
     name: str,
+    autoLink: bool,
     sampleRate: int,
     blockSamplesCount: int,
     changeVoice: Callable[
@@ -168,6 +170,7 @@ def run(
             ctypes.cast(ctx_p, ctypes.c_void_p),
             loop,
             name.encode("utf-8"),
+            autoLink,
             sampleRate,
             blockSamplesCount,
             on_process,
@@ -178,9 +181,10 @@ def run(
         pfts.deinit()
 
 
-class AudioPipeWire:
+class AudioPipeWire(QObject):
     def __init__(
         self,
+        autoLink: bool,
         sampleRate: int,
         blockSamplesCount: int,
         changeVoice,
@@ -192,20 +196,24 @@ class AudioPipeWire:
         pfts.init()
         self.loop = pfts.main_loop_new()
 
-        self.thread = threading.Thread(
+        self.pftsThread = threading.Thread(
             target=run,
             args=(
                 self.loop,
                 f"AVoc_{randId}",
+                autoLink,
                 sampleRate,
                 blockSamplesCount,
                 changeVoice,
             ),
         )
-        self.thread.start()
+        self.pftsThread.start()
+
+    def setAutoLink(self, autoLink: bool):
+        pfts.set_auto_link(self.loop, autoLink)
 
     def exit(self):
         if self.loop is not None:
             pfts.main_loop_quit(self.loop)
-            self.thread.join()
+            self.pftsThread.join()
             self.loop = None
