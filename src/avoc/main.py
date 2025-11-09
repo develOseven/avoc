@@ -58,6 +58,7 @@ from .exceptions import (
 )
 from .loadingoverlay import LoadingOverlay
 from .processingsettings import (
+    CROSS_FADE_OVERLAP_SIZE,
     DEFAULT_CHUNK_SIZE,
     DEFAULT_EXTRA_CONVERT_SIZE,
     DEFAULT_SAMPLE_RATE,
@@ -304,7 +305,9 @@ class VoiceChangerManager(QObject):
             serverReadChunkSize=processingSettings.value(
                 "chunkSize", DEFAULT_CHUNK_SIZE, type=int
             ),
-            crossFadeOverlapSize=0.1,
+            crossFadeOverlapSize=processingSettings.value(
+                "crossFadeOverlapSize", CROSS_FADE_OVERLAP_SIZE, type=float
+            ),
             # Avoid conversions, assume TF32 is ON internally.
             # TODO: test delay. Maybe FP16 if no TF32 available.
             forceFp32=True,

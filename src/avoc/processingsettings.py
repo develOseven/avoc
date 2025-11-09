@@ -32,6 +32,7 @@ F0_DET_PREFERENCES = [
 BACKEND_PREFERENCES = ["cuda", "directml", "mps", "cpu"]
 DEFAULT_SILENT_THRESHOLD = -90
 DEFAULT_CHUNK_SIZE = 16
+CROSS_FADE_OVERLAP_SIZE = 0.15
 DEFAULT_EXTRA_CONVERT_SIZE = 3.0
 
 DEFAULT_SAMPLE_RATE = 48000
@@ -168,6 +169,34 @@ class ProcessingSettingsGroupBox(QGroupBox):
         processingSettingsLayout.addWidget(chunkSizeSlider, row, 1)
         processingSettingsLayout.addWidget(self.chunkSizeSpinBox, row, 2)
         row += 1
+        crossFadeOverlapSizeLabel = QLabel("Cross Fade Overlap Size")
+        crossFadeOverlapSizeLabel.setToolTip(
+            "Overlap to use to stitch output buffers together."
+        )
+        crossFadeOverlapSizeSlider = QSlider(
+            Qt.Orientation.Horizontal,
+        )
+        self.crossFadeOverlapSizeDoubleSpinBox = QDoubleSpinBox(
+            minimum=0.01, maximum=0.5, singleStep=0.01, decimals=2
+        )
+        crossFadeOverlapSizeSlider.setMinimum(
+            int(self.crossFadeOverlapSizeDoubleSpinBox.minimum() * 100)
+        )
+        crossFadeOverlapSizeSlider.setMaximum(
+            int(self.crossFadeOverlapSizeDoubleSpinBox.maximum() * 100)
+        )
+        crossFadeOverlapSizeSlider.valueChanged.connect(
+            lambda v: self.crossFadeOverlapSizeDoubleSpinBox.setValue(v / 100.0)
+        )
+        self.crossFadeOverlapSizeDoubleSpinBox.valueChanged.connect(
+            lambda v: crossFadeOverlapSizeSlider.setValue(v * 100)
+        )
+        processingSettingsLayout.addWidget(crossFadeOverlapSizeLabel, row, 0)
+        processingSettingsLayout.addWidget(crossFadeOverlapSizeSlider, row, 1)
+        processingSettingsLayout.addWidget(
+            self.crossFadeOverlapSizeDoubleSpinBox, row, 2
+        )
+        row += 1
         extraConvertSizeLabel = QLabel("Extra")
         extraConvertSizeLabel.setToolTip(
             "Extra audio history that will be used for voice conversion. Does not affect the delay. More extra - better voice quality, more GPU usage. Less extra - vice versa."  # noqa: E501
@@ -239,6 +268,18 @@ class ProcessingSettingsGroupBox(QGroupBox):
 
         self.chunkSizeSpinBox.valueChanged.connect(
             lambda chunkSize: processingSettings.setValue("chunkSize", chunkSize)
+        )
+
+        crossFadeOverlapSize = processingSettings.value(
+            "crossFadeOverlapSize", CROSS_FADE_OVERLAP_SIZE, type=float
+        )
+        assert type(crossFadeOverlapSize) is float
+        self.crossFadeOverlapSizeDoubleSpinBox.setValue(crossFadeOverlapSize)
+
+        self.crossFadeOverlapSizeDoubleSpinBox.valueChanged.connect(
+            lambda crossFadeOverlapSize: processingSettings.setValue(
+                "crossFadeOverlapSize", crossFadeOverlapSize
+            )
         )
 
         extraConvertSize = processingSettings.value(
