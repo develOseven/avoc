@@ -254,6 +254,7 @@ class VoiceChangerManager(QObject):
 
     modelUpdated = Signal(int)
     modelSettingsLoaded = Signal(int, float, float)
+    vcLoadedChanged = Signal(bool)
 
     def __init__(
         self,
@@ -264,7 +265,7 @@ class VoiceChangerManager(QObject):
         super().__init__()
 
         self.vcs: list[VoiceChangerV2] = []
-        self.vcLoaded = False
+        self._vcLoaded = False
 
         self.voiceCardsManager = voiceCardsManager
         self.pretrainDir = pretrainDir
@@ -276,6 +277,16 @@ class VoiceChangerManager(QObject):
         self.passThrough = bool(settings.value("passThrough", False, type=bool))
 
         self.longOperationCm = longOperationCm
+
+    @property
+    def vcLoaded(self) -> bool:
+        return self._vcLoaded
+
+    @vcLoaded.setter
+    def vcLoaded(self, value: bool):
+        if self._vcLoaded != value:
+            self._vcLoaded = value
+            self.vcLoadedChanged.emit(self._vcLoaded)
 
     def getVoiceChangerSettings(
         self, voiceCardIndex: int
@@ -584,6 +595,11 @@ def main():
     vcm = VoiceChangerManager(voiceCardsManager, pretrainDir, longOperationCm)
     window.closed.connect(lambda: vcm.audio.exit() if vcm.audio is not None else None)
 
+    vcm.vcLoadedChanged.connect(
+        lambda vcLoaded: window.windowAreaWidget.startButton.setEnabled(vcLoaded)
+    )
+    window.windowAreaWidget.startButton.setEnabled(vcm.vcLoaded)
+
     window.windowAreaWidget.startButton.toggled.connect(vcm.setRunning)
 
     def onAudioRunning(startButtonChecked: bool):
@@ -591,14 +607,12 @@ def main():
         if HAS_PIPEWIRE:
             if startButtonChecked:
                 cuiw.audioPipeWireSettingsGroupBox.autoLinkCheckBox.toggled.connect(
-                    vcm.audio.setAutoLink
+                    vcm.audio.setAutoLink, type=Qt.ConnectionType.UniqueConnection
                 )
         else:
             cuiw.audioQtMultimediaSettingsGroupBox.setEnabled(not startButtonChecked)
 
-    window.windowAreaWidget.startButton.toggled.connect(
-        onAudioRunning, Qt.ConnectionType.UniqueConnection
-    )
+    window.windowAreaWidget.startButton.toggled.connect(onAudioRunning)
 
     def setPassThrough(passThrough: bool):
         oldPassThrough = vcm.passThrough
