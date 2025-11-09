@@ -270,6 +270,11 @@ class VoiceChangerManager(QObject):
         self.pretrainDir = pretrainDir
         self.audio: AudioQtMultimedia | AudioPipeWire | None = None
 
+        settings = QSettings()
+        settings.beginGroup("InterfaceSettings")
+
+        self.passThrough = bool(settings.value("passThrough", False, type=bool))
+
         self.longOperationCm = longOperationCm
 
     def getVoiceChangerSettings(
@@ -404,7 +409,7 @@ class VoiceChangerManager(QObject):
                 continue
         self.vcs = remaining
 
-    def setRunning(self, running: bool, passThrough: bool):
+    def setRunning(self, running: bool):
         if (self.audio is not None) == running:
             return
 
@@ -439,12 +444,13 @@ class VoiceChangerManager(QObject):
                     chunkSize * 128,
                     self.changeVoice,
                 )
-            # TODO: bring back passThrough
-            # self.audio.voiceChangerFilter.passThrough = passThrough
         else:
             assert self.audio is not None
             self.audio.exit()
             self.audio = None
+
+    def setPassThrough(self, passThrough: bool):
+        self.passThrough = passThrough
 
     def changeVoice(
         self, receivedData: AudioInOutFloat
@@ -460,6 +466,8 @@ class VoiceChangerManager(QObject):
 
         try:
             audio, vol, perf = self.vcs[-1].on_request(receivedData)
+            if self.passThrough:
+                return receivedData, 1, [0, 0, 0], None
             return audio, vol, perf, None
         except VoiceChangerIsNotSelectedException as e:
             logger.exception(e)
@@ -576,12 +584,7 @@ def main():
     vcm = VoiceChangerManager(voiceCardsManager, pretrainDir, longOperationCm)
     window.closed.connect(lambda: vcm.audio.exit() if vcm.audio is not None else None)
 
-    window.windowAreaWidget.startButton.toggled.connect(
-        lambda checked: vcm.setRunning(
-            checked,
-            window.windowAreaWidget.passThroughButton.isChecked(),
-        )
-    )
+    window.windowAreaWidget.startButton.toggled.connect(vcm.setRunning)
 
     def onAudioRunning(startButtonChecked: bool):
         cuiw = window.customizeUiWidget
@@ -598,13 +601,13 @@ def main():
     )
 
     def setPassThrough(passThrough: bool):
-        if vcm.audio is not None:
-            if vcm.audio.voiceChangerFilter.passThrough != passThrough:
-                vcm.audio.voiceChangerFilter.passThrough = passThrough
-                window.showTrayMessage(
-                    window.windowTitle(),
-                    f"Pass Through {"On" if passThrough else "Off"}",
-                )
+        oldPassThrough = vcm.passThrough
+        if oldPassThrough != passThrough:
+            vcm.setPassThrough(passThrough)
+            window.showTrayMessage(
+                window.windowTitle(),
+                f"Pass Through {"On" if passThrough else "Off"}",
+            )
 
     window.windowAreaWidget.passThroughButton.toggled.connect(setPassThrough)
 

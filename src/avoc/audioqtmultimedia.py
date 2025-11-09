@@ -17,7 +17,6 @@ class AudioQtMultimediaFilter(QIODevice):
     ):
         super().__init__(parent)
 
-        self.passThrough = False
         self.inputDevice = inputDevice
         self.inputDevice.readyRead.connect(self.onReadyRead)
         self.changeVoice = changeVoice
@@ -37,11 +36,6 @@ class AudioQtMultimediaFilter(QIODevice):
         self.audioInBuff = self.audioInBuff[-maxlen // 4 :]
 
         result = np.empty(0, dtype=np.float32)
-
-        if self.passThrough:
-            result = self.audioInBuff
-            self.audioInBuff = np.empty(0, dtype=np.float32)
-            return result.tobytes()
 
         blockCount = len(self.audioInBuff) // self.blockSamplesCount
 
