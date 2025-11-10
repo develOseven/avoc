@@ -369,8 +369,6 @@ class VoiceCardPlaceholderWidget(QWidget):
     def __init__(self, cardSize: QSize, text: str, parent: QWidget | None = None):
         super().__init__(parent)
 
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-
         self.cardSize = cardSize
         self.setStyleSheet("border: 2px solid;")
 
@@ -378,6 +376,7 @@ class VoiceCardPlaceholderWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         dropHere = QLabel(text)
+        dropHere.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         dropHere.setTextFormat(Qt.TextFormat.RichText)
         dropHere.setWordWrap(True)
         dropHere.setAlignment(Qt.AlignmentFlag.AlignCenter)
