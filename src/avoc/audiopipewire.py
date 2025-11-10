@@ -216,4 +216,5 @@ class AudioPipeWire(QObject):
         if self.loop is not None:
             pfts.main_loop_quit(self.loop)
             self.pftsThread.join()
+            pfts.main_loop_destroy(self.loop)
             self.loop = None
