@@ -67,7 +67,7 @@ from .processingsettings import (
     loadGpu,
 )
 from .voicecardsmanager import VoiceCardsManager
-from .windowarea import WindowAreaWidget
+from .windowarea import VoiceCardPlaceholderWidget, WindowAreaWidget
 
 PRETRAIN_DIR_NAME = "pretrain"
 MODEL_DIR_NAME = "model_dir"
@@ -644,8 +644,14 @@ def main():
         vcm.initialize()
         modelSettingsGroupBox.changed.connect(onModelSettingsChanged)
         if bool(interfaceSettings.value("showNotifications", True)):
-            voiceCardWidget: QLabel = window.windowAreaWidget.voiceCards.itemWidget(
-                window.windowAreaWidget.voiceCards.currentItem()
+            voiceCardWidget: QLabel | VoiceCardPlaceholderWidget = (
+                window.windowAreaWidget.voiceCards.itemWidget(
+                    window.windowAreaWidget.voiceCards.currentItem()
+                )
+            )
+            assert (
+                type(voiceCardWidget) is QLabel
+                or type(voiceCardWidget) is VoiceCardPlaceholderWidget
             )
             pixmap = voiceCardWidget.pixmap()
             window.showTrayMessage(
