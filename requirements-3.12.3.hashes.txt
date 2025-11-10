@@ -1285,9 +1285,9 @@ packaging==25.0 \
     #   onnxruntime-gpu
     #   onnxscript
     #   pooch
-pipewire-filtertools==0.1.0 \
-    --hash=sha256:28eb1a78ca30a5efc492252f0f8f019ded3abcc95cb0a13eb2c24db3871d1356 \
-    --hash=sha256:49fe6dada17f115fc927d1527a8a70279edd6ba006a6016c7e1a9c2c5beff117
+pipewire-filtertools==0.2.0 \
+    --hash=sha256:545f21ecf1a3c799b366b4c4a87721dc875315d362e9e3809ad967626013fc04 \
+    --hash=sha256:ef351833b776e7f1579e586c22471ba41eee8dd0c1b2c99259890d025c5a3ad5
     # via -r requirements-3.12.3.txt
 platformdirs==4.5.0 \
     --hash=sha256:70ddccdd7c99fc5942e9fc25636a8b34d04c24b335100223152c2803e4063312 \
@@ -1983,9 +1983,9 @@ urllib3==2.5.0 \
     # via
     #   -r requirements-3.12.3.txt
     #   requests
-voiceconversion==0.0.6 \
-    --hash=sha256:509faf7e6b26906e1638ad6efef2c6e5c88319e6bd710c2c4fdba2749e7cde4c \
-    --hash=sha256:836558a00ce52a0ec8be55733f24cf4e0f932e40508ef9c40add79daf1bc4d74
+voiceconversion==0.0.8 \
+    --hash=sha256:7352d294fa448df2f596239d7854b5718e35a28bb7ad0eba07e1caa59332afd2 \
+    --hash=sha256:dbaf7ec5b0e83efb8165ea4a427aa9d87cfff23e09d524b631448a47d42f6c8f
     # via -r requirements-3.12.3.txt
 xxhash==3.6.0 \
     --hash=sha256:01262da8798422d0685f7cef03b2bd3f4f46511b02830861df548d7def4402ad \

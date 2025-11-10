@@ -55,7 +55,7 @@ onnxruntime-gpu==1.23.2
 onnxscript==0.5.6
 onnxsim==0.4.36
 packaging==25.0
-pipewire-filtertools==0.1.0
+pipewire-filtertools==0.2.0
 platformdirs==4.5.0
 pooch==1.8.2
 propcache==0.4.1
@@ -93,6 +93,6 @@ triton==3.5.0
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 urllib3==2.5.0
-voiceconversion==0.0.6
+voiceconversion==0.0.8
 xxhash==3.6.0
 yarl==1.22.0
