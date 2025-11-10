@@ -141,6 +141,17 @@ class WindowAreaWidget(QWidget):
             )
         )
 
+        def onRowsInserted(_: QModelIndex, first: int, last: int):
+            if last - first + 1 == self.voiceCards.count() - 1:  # minus the placeholder
+                self.voiceCards.setCurrentRow(
+                    int(settings.value("currentVoiceCardIndex", 0))
+                )
+
+        # QueuedConnection to make sure that the widget is properly set into the card.
+        self.voiceCards.model().rowsInserted.connect(
+            onRowsInserted, type=Qt.ConnectionType.QueuedConnection
+        )
+
         self.voiceCards.setCurrentRow(int(settings.value("currentVoiceCardIndex", 0)))
         self.voiceCards.currentRowChanged.connect(
             lambda row: settings.setValue("currentVoiceCardIndex", row)
