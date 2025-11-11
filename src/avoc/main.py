@@ -421,15 +421,12 @@ class VoiceChangerManager(QObject):
         self.voiceCardsManager.save(importedModelInfo)
 
     def onRemoveVoiceCards(self):
+        importedModelInfoManager = self.voiceCardsManager.importedModelInfoManager
         remaining = []
         for vc in self.vcs:
-            if (
-                self.voiceCardsManager.importedModelInfoManager.get(
-                    vc.settings.rvcImportedModelInfo.id
-                )
-                is None
-            ):
-                continue
+            id = vc.settings.rvcImportedModelInfo.id
+            if importedModelInfoManager.get(id) is not None:
+                remaining.append(vc)
         self.vcs = remaining
 
     def setPassThrough(self, value: bool):
@@ -440,7 +437,7 @@ class VoiceChangerManager(QObject):
     ) -> tuple[AudioInOutFloat, float, list[int], tuple | None]:
         if not self.vcLoaded:
             return (
-                np.zeros(1, dtype=np.float32),
+                np.zeros(len(receivedData), dtype=np.float32),
                 0,
                 [0, 0, 0],
                 ("VoiceChangerIsNotSelectedException", ""),
@@ -485,6 +482,16 @@ class VoiceChangerManager(QObject):
         )
         if importedModelInfo is not None:
             self.voiceCardsManager.set(voiceCardIndex, importedModelInfo)
+
+            interfaceSettings = QSettings()
+            interfaceSettings.beginGroup("InterfaceSettings")
+            currentVoiceCardIndex = interfaceSettings.value(
+                "currentVoiceCardIndex", 0, type=int
+            )
+            assert type(currentVoiceCardIndex) is int
+            if voiceCardIndex == currentVoiceCardIndex:
+                self.initialize()
+
             self.modelUpdated.emit(voiceCardIndex)
 
     def setVoiceCardIcon(self, voiceCardIndex: int, iconFile: str):
@@ -666,9 +673,7 @@ def initialize(
     window.windowAreaWidget.cardMoved.connect(voiceCardsManager.moveCard)
 
     window.windowAreaWidget.cardsRemoved.connect(voiceCardsManager.removeCard)
-    window.windowAreaWidget.cardsRemoved.connect(
-        lambda first, last: vcm.onRemoveVoiceCards()
-    )
+    window.windowAreaWidget.cardsRemoved.connect(vcm.onRemoveVoiceCards)
 
     window.windowAreaWidget.voiceCards.droppedModelFiles.connect(vcm.importModel)
     window.windowAreaWidget.voiceCards.droppedIconFile.connect(vcm.setVoiceCardIcon)

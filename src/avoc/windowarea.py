@@ -119,9 +119,11 @@ class WindowAreaWidget(QWidget):
         self.setLayout(layout)
 
         for voiceCardIndex in range(voiceCardsManager.count()):
-            self.voiceCards.addWidget(self.voiceCards.voiceCardForIndex(voiceCardIndex))
+            self.voiceCards.addVoiceCard(
+                self.voiceCards.voiceCardForIndex(voiceCardIndex)
+            )
 
-        self.voiceCards.addWidget(
+        self.voiceCards.addVoiceCard(
             VoiceCardPlaceholderWidget(
                 VOICE_CARD_SIZE, DROP_MODEL_FILES + DROP_ICON_FILE
             ),
@@ -210,23 +212,6 @@ class FlowContainer(QListWidget):
             }}
             """
         )
-
-    def addWidget(self, widget: QWidget, selectable: bool = True):
-        item = QListWidgetItem()
-        if not selectable:
-            item.setFlags(
-                item.flags()
-                & ~(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
-            )
-        self.addItem(item)
-        item.setSizeHint(widget.sizeHint())
-        self.setItemWidget(item, widget)
-
-    def insertWidget(self, row: int, widget: QWidget):
-        item = QListWidgetItem()
-        self.insertItem(row, item)
-        item.setSizeHint(widget.sizeHint())
-        self.setItemWidget(item, widget)
 
 
 class FlowContainerWithFixedLast(FlowContainer):
@@ -318,7 +303,7 @@ class VoiceCardsContainer(FlowContainerWithFixedLast):
                 )
                 return
 
-        row = self.indexAt(event.pos()).row()
+        row = self.indexAt(event.position().toPoint()).row()
         importingNew = row < 0 or row >= self.count()
         voiceCardIndex = self.count() - 1 if importingNew else row
 
@@ -342,11 +327,49 @@ class VoiceCardsContainer(FlowContainerWithFixedLast):
         if len(iconFiles) == 1 and voiceCardIndex < self.count() - 1:
             self.droppedIconFile.emit(voiceCardIndex, iconFiles[0].toLocalFile())
 
+        event.acceptProposedAction()
+
+    def setVoiceCardContextMenu(self, item: QListWidgetItem, widget: QWidget):
+        contextMenu = QMenu(widget)
+        contextMenu.setObjectName("VoiceCardPopUpMenu")
+        deleteAction = QAction("Delete", widget)
+        deleteAction.setObjectName("Delete")
+        deleteAction.triggered.connect(lambda: self.takeItem(self.row(item)))
+        contextMenu.addAction(deleteAction)
+        widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        widget.customContextMenuRequested.connect(
+            lambda point: contextMenu.exec(widget.mapToGlobal(point))
+        )
+
+    def addVoiceCard(self, widget: QWidget, selectable: bool = True):
+        item = QListWidgetItem()
+        if not selectable:
+            item.setFlags(
+                item.flags()
+                & ~(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
+            )
+        self.addItem(item)
+        item.setSizeHint(widget.sizeHint())
+        self.setItemWidget(item, widget)
+        if selectable:
+            self.setVoiceCardContextMenu(item, widget)
+
+    def insertVoiceCard(self, row: int, widget: QWidget):
+        item = QListWidgetItem()
+        self.insertItem(row, item)
+        item.setSizeHint(widget.sizeHint())
+        self.setItemWidget(item, widget)
+        self.setVoiceCardContextMenu(item, widget)
+
     def onVoiceCardUpdated(self, row: int):
+        widget = self.voiceCardForIndex(row)
+
         if row >= self.count() - 1:
-            self.insertWidget(row, self.voiceCardForIndex(row))
+            item = self.insertVoiceCard(row, widget)
         else:
-            self.setItemWidget(self.item(row), self.voiceCardForIndex(row))
+            item = self.item(row)
+            self.setItemWidget(item, widget)
+            self.setVoiceCardContextMenu(item, widget)
 
     def voiceCardForIndex(self, row: int) -> QWidget:
         widget: QWidget | QLabel | None = None
@@ -365,14 +388,6 @@ class VoiceCardsContainer(FlowContainerWithFixedLast):
                 VOICE_CARD_SIZE, f"{name}<br><br>{DROP_ICON_FILE}"
             )
         widget.setToolTip(name)
-        contextMenu = QMenu(widget)
-        deleteAction = QAction("Delete", widget)
-        deleteAction.triggered.connect(lambda: self.takeItem(self.currentRow()))
-        contextMenu.addAction(deleteAction)
-        widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        widget.customContextMenuRequested.connect(
-            lambda point: contextMenu.exec(widget.mapToGlobal(point))
-        )
         return widget
 
 

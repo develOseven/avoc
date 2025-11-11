@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 
 import pytest
-from voiceconversion.data.imported_model_info import RVCImportedModelInfo
 from voiceconversion.imported_model_info_manager import ImportedModelInfoManager
 
 from avoc.exceptions import (
@@ -10,6 +9,8 @@ from avoc.exceptions import (
     FailedToMoveVoiceCardException,
 )
 from avoc.voicecardsmanager import VoiceCardsManager
+
+from .mocks.mock_rvcimportedmodelinfo import newInfo
 
 
 def createTestIconFile(tmp_path, name="icon.png", content=b"ICON"):
@@ -30,18 +31,6 @@ def voiceCardsDir(tmp_path):
     d = tmp_path / "voice_cards_dir"
     d.mkdir()
     return str(d)
-
-
-def newInfo(manager: ImportedModelInfoManager, name="model"):
-    id, storage_dir = manager.new_id()
-    info = RVCImportedModelInfo(
-        id=id,
-        storageDir=storage_dir,
-        name=f"{name}-{id}",
-        voiceChangerType="RVC",
-    )
-    manager.save(info)
-    return info
 
 
 def testSetGetAndPersistence(modelDir, voiceCardsDir):
