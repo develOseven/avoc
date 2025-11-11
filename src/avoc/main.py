@@ -694,10 +694,8 @@ def main() -> None:
         vcm.initialize()
         modelSettingsGroupBox.changed.connect(onModelSettingsChanged)
         if bool(interfaceSettings.value("showNotifications", True)):
-            voiceCardWidget: QLabel | VoiceCardPlaceholderWidget = (
-                window.windowAreaWidget.voiceCards.itemWidget(
-                    window.windowAreaWidget.voiceCards.currentItem()
-                )
+            voiceCardWidget = window.windowAreaWidget.voiceCards.itemWidget(
+                window.windowAreaWidget.voiceCards.currentItem()
             )
             assert (
                 type(voiceCardWidget) is QLabel
