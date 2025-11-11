@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMenu,
     QMessageBox,
-    QPushButton,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -77,7 +77,10 @@ class WindowAreaWidget(QWidget):
 
         buttonsLayout = QVBoxLayout()
 
-        self.startButton = QPushButton(START_TXT)
+        self.startButton = QToolButton(
+            toolButtonStyle=Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
+        self.startButton.setText(START_TXT)
         fm = QFontMetrics(self.startButton.font())
         maxButtonWidth = int(
             max(
@@ -101,15 +104,12 @@ class WindowAreaWidget(QWidget):
         )
         buttonsLayout.addWidget(self.startButton)
 
-        self.passThroughButton = QPushButton(PASS_THROUGH_TXT)
+        self.passThroughButton = QToolButton(
+            toolButtonStyle=Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
+        self.passThroughButton.setText(PASS_THROUGH_TXT)
         self.passThroughButton.setMinimumWidth(maxButtonWidth)
         self.passThroughButton.setCheckable(True)
-        passThrough = settings.value("passThrough", False, type=bool)
-        assert type(passThrough) is bool
-        self.passThroughButton.setChecked(passThrough)
-        self.passThroughButton.toggled.connect(
-            lambda checked: settings.setValue("passThrough", checked)
-        )
         buttonsLayout.addWidget(self.passThroughButton)
 
         controlsLayout.addLayout(buttonsLayout)

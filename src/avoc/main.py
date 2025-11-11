@@ -8,6 +8,7 @@ from traceback import format_exc
 
 import numpy as np
 from PySide6.QtCore import (
+    Property,
     QCommandLineOption,
     QCommandLineParser,
     QObject,
@@ -142,6 +143,72 @@ class MainWindow(QMainWindow):
 
         preferencesMenu.addAction(custumizeUiAction)
 
+        interfaceSettings = QSettings()
+        interfaceSettings.beginGroup("InterfaceSettings")
+
+        self.startAction = QAction(
+            "Start",
+            self,
+            checkable=True,
+            enabled=False,
+        )
+        self.startAction.toggled.connect(
+            lambda checked: interfaceSettings.setValue("running", checked)
+        )
+        # If model loads and triggers the enable, then
+        # immediately start if it was saved in settings.
+        self.startAction.enabledChanged.connect(
+            lambda enabled: (
+                self.startAction.setChecked(
+                    bool(interfaceSettings.value("running", False, type=bool))
+                )
+                if enabled
+                else None
+            )
+        )
+        self.windowAreaWidget.startButton.setDefaultAction(self.startAction)
+
+        if not HAS_PIPEWIRE:
+            cuiw = self.customizeUiWidget
+            self.startAction.toggled.connect(
+                lambda checked: cuiw.audioQtMultimediaSettingsGroupBox.setEnabled(
+                    not checked
+                )
+            )
+
+        self.passThroughAction = QAction(
+            "Pass Through",
+            self,
+            checkable=True,
+            checked=bool(interfaceSettings.value("passThrough", False, type=bool)),
+        )
+        self.passThroughAction.toggled.connect(
+            lambda checked: interfaceSettings.setValue("passThrough", checked)
+        )
+        self.passThroughAction.toggled.connect(
+            lambda checked: self.showTrayMessage(
+                self.windowTitle(),
+                f"Pass Through {"On" if checked else "Off"}",
+            )
+        )
+        self.windowAreaWidget.passThroughButton.setDefaultAction(self.passThroughAction)
+
+        audioPipeWireSettings = QSettings()
+        audioPipeWireSettings.beginGroup("AudioPipeWireSettings")
+
+        self.autoLinkAction = QAction(
+            "Auto Link Applications",
+            self,
+            checkable=True,
+            checked=bool(audioPipeWireSettings.value("autoLink", True, type=bool)),
+        )
+        self.autoLinkAction.toggled.connect(
+            lambda checked: audioPipeWireSettings.setValue("autoLink", checked)
+        )
+        self.customizeUiWidget.audioPipeWireSettingsGroupBox.autoLinkCheckBox.setDefaultAction(
+            self.autoLinkAction
+        )
+
         def onVoiceCardHotkey(shortcutId: str):
             if shortcutId.startswith(VOICE_CARD_KEYBIND_ID_PREFIX):
                 rowPlusOne = shortcutId.removeprefix(VOICE_CARD_KEYBIND_ID_PREFIX)
@@ -154,9 +221,9 @@ class MainWindow(QMainWindow):
                     ):
                         self.windowAreaWidget.voiceCards.setCurrentRow(row)
             elif shortcutId == ENABLE_PASS_THROUGH_KEYBIND_ID:
-                self.windowAreaWidget.passThroughButton.setChecked(True)
+                self.passThroughAction.setChecked(True)
             elif shortcutId == DISABLE_PASS_THROUGH_KEYBIND_ID:
-                self.windowAreaWidget.passThroughButton.setChecked(False)
+                self.passThroughAction.setChecked(False)
 
         self.hotkeyListener = Listener()
         self.hotkeyListener.hotkeyPressed.connect(onVoiceCardHotkey)
@@ -271,22 +338,9 @@ class VoiceChangerManager(QObject):
         self.pretrainDir = pretrainDir
         self.audio: AudioQtMultimedia | AudioPipeWire | None = None
 
-        settings = QSettings()
-        settings.beginGroup("InterfaceSettings")
-
-        self.passThrough = bool(settings.value("passThrough", False, type=bool))
+        self.passThrough = False
 
         self.longOperationCm = longOperationCm
-
-    @property
-    def vcLoaded(self) -> bool:
-        return self._vcLoaded
-
-    @vcLoaded.setter
-    def vcLoaded(self, value: bool):
-        if self._vcLoaded != value:
-            self._vcLoaded = value
-            self.vcLoadedChanged.emit(self._vcLoaded)
 
     def getVoiceChangerSettings(
         self, voiceCardIndex: int
@@ -398,6 +452,7 @@ class VoiceChangerManager(QObject):
             logger.warning(f"Voice card is not found {voiceCardIndex}")
             return
 
+        assert type(importedModelInfo) == RVCImportedModelInfo
         importedModelInfo.defaultTune = pitch
         importedModelInfo.defaultFormantShift = formantShift
         importedModelInfo.defaultIndexRatio = index
@@ -420,48 +475,8 @@ class VoiceChangerManager(QObject):
                 continue
         self.vcs = remaining
 
-    def setRunning(self, running: bool):
-        if (self.audio is not None) == running:
-            return
-
-        if running:
-            self.initialize()
-            processingSettings = QSettings()
-            processingSettings.beginGroup("ProcessingSettings")
-            chunkSize = processingSettings.value(
-                "chunkSize", DEFAULT_CHUNK_SIZE, type=int
-            )
-            assert type(chunkSize) is int
-            sampleRate = processingSettings.value(
-                "sampleRate", DEFAULT_SAMPLE_RATE, type=int
-            )
-            assert type(sampleRate) is int
-            if HAS_PIPEWIRE:
-                audioPipeWireSettings = QSettings()
-                audioPipeWireSettings.beginGroup("AudioPipeWireSettings")
-                self.audio = AudioPipeWire(
-                    bool(audioPipeWireSettings.value("autoLink", True)),
-                    sampleRate,
-                    chunkSize * 128,
-                    self.changeVoice,
-                )
-            else:
-                audioQtMultimediaSettings = QSettings()
-                audioQtMultimediaSettings.beginGroup("AudioQtMultimediaSettings")
-                self.audio = AudioQtMultimedia(
-                    audioQtMultimediaSettings.value("audioInputDevice"),
-                    audioQtMultimediaSettings.value("audioOutputDevice"),
-                    sampleRate,
-                    chunkSize * 128,
-                    self.changeVoice,
-                )
-        else:
-            assert self.audio is not None
-            self.audio.exit()
-            self.audio = None
-
-    def setPassThrough(self, passThrough: bool):
-        self.passThrough = passThrough
+    def setPassThrough(self, value: bool):
+        self.passThrough = value
 
     def changeVoice(
         self, receivedData: AudioInOutFloat
@@ -519,8 +534,18 @@ class VoiceChangerManager(QObject):
         self.voiceCardsManager.setIcon(voiceCardIndex, iconFile)
         self.modelUpdated.emit(voiceCardIndex)
 
+    def readVcLoaded(self) -> bool:
+        return self._vcLoaded
 
-def main():
+    def setVcLoaded(self, value: bool):
+        if self._vcLoaded != value:
+            self._vcLoaded = value
+            self.vcLoadedChanged.emit(self._vcLoaded)
+
+    vcLoaded = Property(bool, readVcLoaded, setVcLoaded, notify=vcLoadedChanged)
+
+
+def main() -> None:
     app = QApplication(sys.argv)
     app.setDesktopFileName("AVoc")
     app.setOrganizationName("AVocOrg")
@@ -593,37 +618,62 @@ def main():
 
     # Create the voice changer and connect it to the controls.
     vcm = VoiceChangerManager(voiceCardsManager, pretrainDir, longOperationCm)
-    window.closed.connect(lambda: vcm.audio.exit() if vcm.audio is not None else None)
 
-    vcm.vcLoadedChanged.connect(
-        lambda vcLoaded: window.windowAreaWidget.startButton.setEnabled(vcLoaded)
+    vcm.setPassThrough(window.passThroughAction.isChecked())
+    window.passThroughAction.toggled.connect(vcm.setPassThrough)
+
+    vcm.vcLoadedChanged.connect(window.startAction.setEnabled)
+
+    window.startAction.toggled.connect(
+        lambda checked: vcm.initialize() if checked else None
     )
-    window.windowAreaWidget.startButton.setEnabled(vcm.vcLoaded)
 
-    window.windowAreaWidget.startButton.toggled.connect(vcm.setRunning)
+    audio: AudioPipeWire | AudioQtMultimedia | None = None
 
-    def onAudioRunning(startButtonChecked: bool):
-        cuiw = window.customizeUiWidget
+    def onStart(checked: bool):
+        nonlocal audio
+        running = audio is not None
+        if running == checked:
+            return
+
+        if not checked:
+            assert audio is not None
+            audio.exit()
+            audio = None
+            return
+
+        assert audio is None
+
+        processingSettings = QSettings()
+        processingSettings.beginGroup("ProcessingSettings")
+        chunkSize = processingSettings.value("chunkSize", DEFAULT_CHUNK_SIZE, type=int)
+        assert type(chunkSize) is int
+        sampleRate = processingSettings.value(
+            "sampleRate", DEFAULT_SAMPLE_RATE, type=int
+        )
+        assert type(sampleRate) is int
         if HAS_PIPEWIRE:
-            if startButtonChecked:
-                cuiw.audioPipeWireSettingsGroupBox.autoLinkCheckBox.toggled.connect(
-                    vcm.audio.setAutoLink, type=Qt.ConnectionType.UniqueConnection
-                )
+            audioPipeWireSettings = QSettings()
+            audioPipeWireSettings.beginGroup("AudioPipeWireSettings")
+            audio = AudioPipeWire(
+                window.autoLinkAction.isChecked(),
+                sampleRate,
+                chunkSize * 128,
+                vcm.changeVoice,
+            )
+            window.autoLinkAction.toggled.connect(audio.setAutoLink)
         else:
-            cuiw.audioQtMultimediaSettingsGroupBox.setEnabled(not startButtonChecked)
-
-    window.windowAreaWidget.startButton.toggled.connect(onAudioRunning)
-
-    def setPassThrough(passThrough: bool):
-        oldPassThrough = vcm.passThrough
-        if oldPassThrough != passThrough:
-            vcm.setPassThrough(passThrough)
-            window.showTrayMessage(
-                window.windowTitle(),
-                f"Pass Through {"On" if passThrough else "Off"}",
+            audioQtMultimediaSettings = QSettings()
+            audioQtMultimediaSettings.beginGroup("AudioQtMultimediaSettings")
+            audio = AudioQtMultimedia(
+                audioQtMultimediaSettings.value("audioInputDevice"),
+                audioQtMultimediaSettings.value("audioOutputDevice"),
+                sampleRate,
+                chunkSize * 128,
+                vcm.changeVoice,
             )
 
-    window.windowAreaWidget.passThroughButton.toggled.connect(setPassThrough)
+    window.startAction.toggled.connect(onStart)
 
     modelSettingsGroupBox = window.windowAreaWidget.modelSettingsGroupBox
 
@@ -683,21 +733,15 @@ def main():
     # Load the current voice model if any.
     if not clParser.isSet(noModelLoadOption):
         vcm.initialize()
-        if vcm.vcLoaded:
-            # Immediately start if it was saved in settings.
-            interfaceSettings = QSettings()
-            interfaceSettings.beginGroup("InterfaceSettings")
-            running = interfaceSettings.value("running", False, type=bool)
-            assert type(running) is bool
-            window.windowAreaWidget.startButton.setChecked(running)
-            onAudioRunning(running)
-            window.windowAreaWidget.startButton.toggled.connect(
-                lambda checked: interfaceSettings.setValue("running", checked)
-            )
 
     # Show the window
     window.resize(1980, 1080)  # TODO: store interface dimensions
     window.show()
     splash.finish(window)
 
-    sys.exit(app.exec())
+    exitStatus = app.exec()
+
+    if audio is not None:
+        audio.exit()
+
+    sys.exit(exitStatus)
