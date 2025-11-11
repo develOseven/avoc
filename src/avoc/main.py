@@ -3,14 +3,14 @@ import logging
 import os
 import signal
 import sys
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from traceback import format_exc
+from typing import Callable, Tuple
 
 import numpy as np
 from PySide6.QtCore import (
     Property,
-    QCommandLineOption,
-    QCommandLineParser,
+    QCoreApplication,
     QObject,
     QSettings,
     QStandardPaths,
@@ -122,7 +122,7 @@ class MainWindow(QMainWindow):
             lambda: viewMenu.removeAction(showMainWindowAction)
         )
 
-        preferencesMenu = self.menuBar().addMenu("Preferences")
+        self.preferencesMenu = self.menuBar().addMenu("Preferences")
 
         custumizeUiAction = QAction("Customize...", self)
         custumizeUiAction.triggered.connect(
@@ -141,7 +141,7 @@ class MainWindow(QMainWindow):
 
         centralWidget.setCurrentWidget(self.windowAreaWidget)
 
-        preferencesMenu.addAction(custumizeUiAction)
+        self.preferencesMenu.addAction(custumizeUiAction)
 
         interfaceSettings = QSettings()
         interfaceSettings.beginGroup("InterfaceSettings")
@@ -205,60 +205,13 @@ class MainWindow(QMainWindow):
         self.autoLinkAction.toggled.connect(
             lambda checked: audioPipeWireSettings.setValue("autoLink", checked)
         )
-        self.customizeUiWidget.audioPipeWireSettingsGroupBox.autoLinkCheckBox.setDefaultAction(
+        cuiw = self.customizeUiWidget
+        cuiw.audioPipeWireSettingsGroupBox.autoLinkCheckBox.setDefaultAction(
             self.autoLinkAction
         )
 
-        def onVoiceCardHotkey(shortcutId: str):
-            if shortcutId.startswith(VOICE_CARD_KEYBIND_ID_PREFIX):
-                rowPlusOne = shortcutId.removeprefix(VOICE_CARD_KEYBIND_ID_PREFIX)
-                if rowPlusOne.isdigit():
-                    row = int(rowPlusOne) - 1  # 1-based indexing
-                    if (
-                        # 1 placeholder card
-                        row < self.windowAreaWidget.voiceCards.count() - 1
-                        and row >= 0
-                    ):
-                        self.windowAreaWidget.voiceCards.setCurrentRow(row)
-            elif shortcutId == ENABLE_PASS_THROUGH_KEYBIND_ID:
-                self.passThroughAction.setChecked(True)
-            elif shortcutId == DISABLE_PASS_THROUGH_KEYBIND_ID:
-                self.passThroughAction.setChecked(False)
-
-        self.hotkeyListener = Listener()
-        self.hotkeyListener.hotkeyPressed.connect(onVoiceCardHotkey)
-
-        configureKeybindingsAction = QAction("Configure Keybindings...", self)
-        configureKeybindingsAction.triggered.connect(
-            lambda: bindHotkeys(
-                [
-                    (
-                        f"{VOICE_CARD_KEYBIND_ID_PREFIX}{row}",
-                        {"description": f"Select Voice Card {row}"},
-                    )
-                    for row in range(
-                        1,  # 1-based indexing
-                        self.windowAreaWidget.voiceCards.count(),  # 1 placeholder card
-                        1,
-                    )
-                ]
-                + [
-                    (
-                        ENABLE_PASS_THROUGH_KEYBIND_ID,
-                        {"description": "Enable Pass Through"},
-                    ),
-                    (
-                        DISABLE_PASS_THROUGH_KEYBIND_ID,
-                        {"description": "Disable Pass Through"},
-                    ),
-                ],
-            )
-        )
-
-        preferencesMenu.addAction(configureKeybindingsAction)
-
         self.systemTrayIcon = QSystemTrayIcon(self.windowIcon(), self)
-        systemTrayMenu = QMenu()
+        self.systemTrayMenu = QMenu()
         activateWindowAction = QAction("Show AVoc", self)
         activateWindowAction.triggered.connect(lambda: self.show())
         activateWindowAction.triggered.connect(
@@ -266,10 +219,10 @@ class MainWindow(QMainWindow):
         )
         quitAction = QAction("Quit AVoc", self)
         quitAction.triggered.connect(lambda: self.close())
-        systemTrayMenu.addActions([activateWindowAction, configureKeybindingsAction])
-        systemTrayMenu.addSeparator()
-        systemTrayMenu.addAction(quitAction)
-        self.systemTrayIcon.setContextMenu(systemTrayMenu)
+        self.systemTrayMenu.addAction(activateWindowAction)
+        self.systemTrayMenu.addSeparator()
+        self.systemTrayMenu.addAction(quitAction)
+        self.systemTrayIcon.setContextMenu(self.systemTrayMenu)
         self.systemTrayIcon.setToolTip(self.windowTitle())
         self.systemTrayIcon.show()
 
@@ -327,7 +280,6 @@ class VoiceChangerManager(QObject):
         self,
         voiceCardsManager: VoiceCardsManager,
         pretrainDir: str,
-        longOperationCm: AbstractContextManager,
     ):
         super().__init__()
 
@@ -340,6 +292,11 @@ class VoiceChangerManager(QObject):
 
         self.passThrough = False
 
+        self.longOperationCm: Callable[[], AbstractContextManager[None]] = nullcontext
+
+    def setLongOperationCm(
+        self, longOperationCm: Callable[[], AbstractContextManager[None]]
+    ):
         self.longOperationCm = longOperationCm
 
     def getVoiceChangerSettings(
@@ -545,79 +502,70 @@ class VoiceChangerManager(QObject):
     vcLoaded = Property(bool, readVcLoaded, setVcLoaded, notify=vcLoadedChanged)
 
 
-def main() -> None:
-    app = QApplication(sys.argv)
-    app.setDesktopFileName("AVoc")
-    app.setOrganizationName("AVocOrg")
-    app.setApplicationName("AVoc")
-
-    iconFilePath = os.path.join(os.path.dirname(__file__), "AVoc.svg")
-
-    icon = QIcon()
-    icon.addFile(iconFilePath)
-
-    app.setWindowIcon(icon)
-
-    clParser = QCommandLineParser()
-    clParser.addHelpOption()
-    clParser.addVersionOption()
-
-    noModelLoadOption = QCommandLineOption(
-        ["no-model-load"], "Don't load a voice model."
-    )
-    clParser.addOption(noModelLoadOption)
-
-    clParser.process(app)
-
-    window = MainWindow()
-    window.setWindowTitle("AVoc")
-
-    # Let Ctrl+C in terminal close the application.
-    signal.signal(signal.SIGINT, lambda *args: window.close())
-    timer = QTimer()
-    timer.start(250)
-    timer.timeout.connect(lambda: None)  # Let the interpreter run each 250 ms.
-
-    splash = QSplashScreen(QPixmap(iconFilePath))
-    splash.show()  # Order is important.
-    window.show()  # Order is important. And calling window.show() is important.
-    window.hide()
-    app.processEvents()
-
-    # Set the path where the voice models are stored and pretrained weights are loaded.
+def getAppLocalDataLocation() -> str:
+    """Get the path where the voice models are stored and pretrained weights are loaded."""
     appLocalDataLocation = QStandardPaths.writableLocation(
         QStandardPaths.StandardLocation.AppLocalDataLocation
     )
     if appLocalDataLocation == "":
         raise FailedToSetModelDirException
+    return appLocalDataLocation
 
-    # Check or download models that used internally by the algorithm.
-    pretrainDir = os.path.join(appLocalDataLocation, PRETRAIN_DIR_NAME)
-    asyncio.run(downloadWeight(pretrainDir))
 
-    importedModelInfoManager = ImportedModelInfoManager(
-        os.path.join(appLocalDataLocation, MODEL_DIR_NAME)
-    )
+def getPretrainDir() -> str:
+    return os.path.join(getAppLocalDataLocation(), PRETRAIN_DIR_NAME)
+
+
+def getModelDir() -> str:
+    return os.path.join(getAppLocalDataLocation(), MODEL_DIR_NAME)
+
+
+def getVoiceCardsDir() -> str:
+    return os.path.join(getAppLocalDataLocation(), VOICE_CARDS_DIR_NAME)
+
+
+def downloadPretrain():
+    """Check or download models that used internally by the algorithm."""
+    asyncio.run(downloadWeight(getPretrainDir()))
+
+
+class AudioHolder:
+    def __init__(self) -> None:
+        self.audio: AudioPipeWire | AudioQtMultimedia | None = None
+
+
+def create() -> Tuple[VoiceCardsManager, VoiceChangerManager, AudioHolder]:
+
+    importedModelInfoManager = ImportedModelInfoManager(getModelDir())
 
     voiceCardsManager = VoiceCardsManager(
         importedModelInfoManager,
-        os.path.join(appLocalDataLocation, VOICE_CARDS_DIR_NAME),
+        getVoiceCardsDir(),
     )
 
-    # Lay out the window.
+    vcm = VoiceChangerManager(voiceCardsManager, getPretrainDir())
+
+    return voiceCardsManager, vcm, AudioHolder()
+
+
+def initialize(
+    window: MainWindow,
+    voiceCardsManager: VoiceCardsManager,
+    vcm: VoiceChangerManager,
+    audioHolder: AudioHolder,
+) -> None:
     window.initialize(voiceCardsManager)
 
     @contextmanager
     def longOperationCm():
         try:
             window.loadingOverlay.show()
-            app.processEvents()
+            QCoreApplication.processEvents()
             yield
         finally:
             window.loadingOverlay.hide()
 
-    # Create the voice changer and connect it to the controls.
-    vcm = VoiceChangerManager(voiceCardsManager, pretrainDir, longOperationCm)
+    vcm.setLongOperationCm(longOperationCm)
 
     vcm.setPassThrough(window.passThroughAction.isChecked())
     window.passThroughAction.toggled.connect(vcm.setPassThrough)
@@ -628,21 +576,19 @@ def main() -> None:
         lambda checked: vcm.initialize() if checked else None
     )
 
-    audio: AudioPipeWire | AudioQtMultimedia | None = None
-
     def onStart(checked: bool):
-        nonlocal audio
-        running = audio is not None
+        nonlocal audioHolder
+        running = audioHolder.audio is not None
         if running == checked:
             return
 
         if not checked:
-            assert audio is not None
-            audio.exit()
-            audio = None
+            assert audioHolder.audio is not None
+            audioHolder.audio.exit()
+            audioHolder.audio = None
             return
 
-        assert audio is None
+        assert audioHolder.audio is None
 
         processingSettings = QSettings()
         processingSettings.beginGroup("ProcessingSettings")
@@ -655,17 +601,17 @@ def main() -> None:
         if HAS_PIPEWIRE:
             audioPipeWireSettings = QSettings()
             audioPipeWireSettings.beginGroup("AudioPipeWireSettings")
-            audio = AudioPipeWire(
+            audioHolder.audio = AudioPipeWire(
                 window.autoLinkAction.isChecked(),
                 sampleRate,
                 chunkSize * 128,
                 vcm.changeVoice,
             )
-            window.autoLinkAction.toggled.connect(audio.setAutoLink)
+            window.autoLinkAction.toggled.connect(audioHolder.audio.setAutoLink)
         else:
             audioQtMultimediaSettings = QSettings()
             audioQtMultimediaSettings.beginGroup("AudioQtMultimediaSettings")
-            audio = AudioQtMultimedia(
+            audioHolder.audio = AudioQtMultimedia(
                 audioQtMultimediaSettings.value("audioInputDevice"),
                 audioQtMultimediaSettings.value("audioOutputDevice"),
                 sampleRate,
@@ -728,18 +674,105 @@ def main() -> None:
     window.windowAreaWidget.voiceCards.droppedIconFile.connect(vcm.setVoiceCardIcon)
     vcm.modelUpdated.connect(window.windowAreaWidget.voiceCards.onVoiceCardUpdated)
 
-    # Load the current voice model if any.
-    if not clParser.isSet(noModelLoadOption):
-        vcm.initialize()
+    vcm.initialize()
 
     # Show the window
     window.resize(1980, 1080)  # TODO: store interface dimensions
     window.show()
+
+
+def setUpHotkeys(window: MainWindow):
+    def onVoiceCardHotkey(shortcutId: str):
+        if shortcutId.startswith(VOICE_CARD_KEYBIND_ID_PREFIX):
+            rowPlusOne = shortcutId.removeprefix(VOICE_CARD_KEYBIND_ID_PREFIX)
+            if rowPlusOne.isdigit():
+                row = int(rowPlusOne) - 1  # 1-based indexing
+                if (
+                    # 1 placeholder card
+                    row < window.windowAreaWidget.voiceCards.count() - 1
+                    and row >= 0
+                ):
+                    window.windowAreaWidget.voiceCards.setCurrentRow(row)
+        elif shortcutId == ENABLE_PASS_THROUGH_KEYBIND_ID:
+            window.passThroughAction.setChecked(True)
+        elif shortcutId == DISABLE_PASS_THROUGH_KEYBIND_ID:
+            window.passThroughAction.setChecked(False)
+
+    hotkeyListener = Listener(window)
+    hotkeyListener.hotkeyPressed.connect(onVoiceCardHotkey)
+
+    configureKeybindingsAction = QAction("Configure Keybindings...", window)
+    configureKeybindingsAction.triggered.connect(
+        lambda: bindHotkeys(
+            [
+                (
+                    f"{VOICE_CARD_KEYBIND_ID_PREFIX}{row}",
+                    {"description": f"Select Voice Card {row}"},
+                )
+                for row in range(
+                    1,  # 1-based indexing
+                    window.windowAreaWidget.voiceCards.count(),  # 1 placeholder card
+                    1,
+                )
+            ]
+            + [
+                (
+                    ENABLE_PASS_THROUGH_KEYBIND_ID,
+                    {"description": "Enable Pass Through"},
+                ),
+                (
+                    DISABLE_PASS_THROUGH_KEYBIND_ID,
+                    {"description": "Disable Pass Through"},
+                ),
+            ],
+        )
+    )
+
+    window.preferencesMenu.addAction(configureKeybindingsAction)
+    window.systemTrayMenu.addAction(configureKeybindingsAction)
+
+
+def deinitialize(audioHolder: AudioHolder):
+    if audioHolder.audio is not None:
+        audioHolder.audio.exit()
+
+
+def main() -> None:
+    app = QApplication(sys.argv)
+    app.setDesktopFileName("AVoc")
+    app.setOrganizationName("AVocOrg")
+    app.setApplicationName("AVoc")
+
+    iconFilePath = os.path.join(os.path.dirname(__file__), "AVoc.svg")
+    icon = QIcon()
+    icon.addFile(iconFilePath)
+    app.setWindowIcon(icon)
+
+    window = MainWindow()
+    window.setWindowTitle("AVoc")
+
+    # Let Ctrl+C in terminal close the application.
+    signal.signal(signal.SIGINT, lambda *args: window.close())
+    timer = QTimer()
+    timer.start(250)
+    timer.timeout.connect(lambda: None)  # Let the interpreter run each 250 ms.
+
+    splash = QSplashScreen(QPixmap(iconFilePath))
+    splash.show()  # Order is important.
+    window.show()  # Order is important. And calling window.show() is important.
+    window.hide()
+    app.processEvents()
+
+    downloadPretrain()
+
+    voiceCardsManager, vcm, audioHolder = create()
+    initialize(window, voiceCardsManager, vcm, audioHolder)
+    setUpHotkeys(window)
+
     splash.finish(window)
 
     exitStatus = app.exec()
 
-    if audio is not None:
-        audio.exit()
+    deinitialize(audioHolder)
 
     sys.exit(exitStatus)
