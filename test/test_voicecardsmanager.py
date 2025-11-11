@@ -1,13 +1,8 @@
-import json
 import os
-import shutil
 from pathlib import Path
 
 import pytest
-from voiceconversion.data.imported_model_info import (
-    ImportedModelInfo,
-    RVCImportedModelInfo,
-)
+from voiceconversion.data.imported_model_info import RVCImportedModelInfo
 from voiceconversion.imported_model_info_manager import ImportedModelInfoManager
 
 from avoc.exceptions import (
