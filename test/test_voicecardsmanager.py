@@ -49,7 +49,7 @@ def newInfo(manager: ImportedModelInfoManager, name="model"):
     return info
 
 
-def test_set_get_and_persistence(modelDir, voiceCardsDir):
+def testSetGetAndPersistence(modelDir, voiceCardsDir):
     importedModelInfoManager = ImportedModelInfoManager(modelDir)
     voiceCardsManager = VoiceCardsManager(importedModelInfoManager, voiceCardsDir)
 
@@ -72,7 +72,7 @@ def test_set_get_and_persistence(modelDir, voiceCardsDir):
     assert voiceCardsManager.get(1).id == info1.id
 
 
-def test_set_and_get_icon(modelDir, voiceCardsDir, tmp_path):
+def testSetAndGetIcon(modelDir, voiceCardsDir, tmp_path):
     importedModelInfoManager = ImportedModelInfoManager(modelDir)
     voiceCardsManager = VoiceCardsManager(importedModelInfoManager, voiceCardsDir)
 
@@ -90,7 +90,7 @@ def test_set_and_get_icon(modelDir, voiceCardsDir, tmp_path):
     assert Path(iconPath).suffix == ".png"
 
 
-def test_set_icon_replaces_previous_icon(modelDir, voiceCardsDir, tmp_path):
+def testSetIconReplacesPreviousIcon(modelDir, voiceCardsDir, tmp_path):
     importedModelInfoManager = ImportedModelInfoManager(modelDir)
     voiceCardsManager = VoiceCardsManager(importedModelInfoManager, voiceCardsDir)
 
@@ -117,7 +117,7 @@ def test_set_icon_replaces_previous_icon(modelDir, voiceCardsDir, tmp_path):
     assert stems.count(str(info.id)) == 1
 
 
-def test_move_card_forward_and_backward(modelDir, voiceCardsDir):
+def testMoveCardForwardAndBackward(modelDir, voiceCardsDir):
     importedModelInfoManager = ImportedModelInfoManager(modelDir)
     voiceCardsManager = VoiceCardsManager(importedModelInfoManager, voiceCardsDir)
 
@@ -145,7 +145,7 @@ def test_move_card_forward_and_backward(modelDir, voiceCardsDir):
     assert set(after2) == set(before)
 
 
-def test_move_card_invalid_indices_raises(modelDir, voiceCardsDir):
+def testMoveCardInvalidIndicesRaises(modelDir, voiceCardsDir):
     importedModelInfoManager = ImportedModelInfoManager(modelDir)
     voiceCardsManager = VoiceCardsManager(importedModelInfoManager, voiceCardsDir)
 
@@ -164,7 +164,7 @@ def test_move_card_invalid_indices_raises(modelDir, voiceCardsDir):
         voiceCardsManager.moveCard(0, 3)
 
 
-def test_remove_card_range_and_icons_removed(modelDir, voiceCardsDir, tmp_path):
+def testRemoveCardRangeAndIconsRemoved(modelDir, voiceCardsDir, tmp_path):
     importedModelInfoManager = ImportedModelInfoManager(modelDir)
     voiceCardsManager = VoiceCardsManager(importedModelInfoManager, voiceCardsDir)
 
@@ -202,7 +202,7 @@ def test_remove_card_range_and_icons_removed(modelDir, voiceCardsDir, tmp_path):
         assert str(rid) not in existing_stems
 
 
-def test_remove_card_invalid_range_raises(modelDir, voiceCardsDir):
+def testRemoveCardInvalidRangeRaises(modelDir, voiceCardsDir):
     importedModelInfoManager = ImportedModelInfoManager(modelDir)
     voiceCardsManager = VoiceCardsManager(importedModelInfoManager, voiceCardsDir)
 
@@ -213,7 +213,7 @@ def test_remove_card_invalid_range_raises(modelDir, voiceCardsDir):
         voiceCardsManager.removeCard(2, 1)
 
 
-def test_seticon_samefile_error_is_handled(modelDir, voiceCardsDir):
+def testSeticonSamefileErrorIsHandled(modelDir, voiceCardsDir):
     importedModelInfoManager = ImportedModelInfoManager(modelDir)
     voiceCardsManager = VoiceCardsManager(importedModelInfoManager, voiceCardsDir)
 
