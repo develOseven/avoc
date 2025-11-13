@@ -220,7 +220,7 @@ class MainWindow(QMainWindow):
         quitAction = QAction("Quit AVoc", self)
         quitAction.triggered.connect(lambda: self.close())
         self.systemTrayMenu.addAction(activateWindowAction)
-        self.systemTrayMenu.addSeparator()
+        self.traySeparator = self.systemTrayMenu.addSeparator()
         self.systemTrayMenu.addAction(quitAction)
         self.systemTrayIcon.setContextMenu(self.systemTrayMenu)
         self.systemTrayIcon.setToolTip(self.windowTitle())
@@ -734,7 +734,7 @@ def setUpHotkeys(window: MainWindow):
     )
 
     window.preferencesMenu.addAction(configureKeybindingsAction)
-    window.systemTrayMenu.addAction(configureKeybindingsAction)
+    window.systemTrayMenu.insertAction(window.traySeparator, configureKeybindingsAction)
 
 
 def deinitialize(audioHolder: AudioHolder):
