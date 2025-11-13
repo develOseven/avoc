@@ -98,6 +98,10 @@ But there are cases when you would want to configure your operating system to pr
 - When you want to use the AVoc's QtMultimedia backend instead of its PipeWire backend (by uninstalling the pipewire-filtertools package from the Python environment).
 - When you're not on the Linux operating system.
 
+## (Optional) EasyEffects
+
+It's fine to use with EasyEffects: put "Noise Reduction" and "Autogain" as the input effects there.
+
 # Development
 
 ## Python Environment
