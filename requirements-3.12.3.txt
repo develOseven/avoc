@@ -55,7 +55,7 @@ onnxruntime-gpu==1.23.2
 onnxscript==0.5.6
 onnxsim==0.4.36
 packaging==25.0
-pipewire-filtertools==0.2.0
+pipewire-filtertools==0.3.0
 platformdirs==4.5.0
 pooch==1.8.2
 propcache==0.4.1

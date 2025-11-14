@@ -1285,9 +1285,9 @@ packaging==25.0 \
     #   onnxruntime-gpu
     #   onnxscript
     #   pooch
-pipewire-filtertools==0.2.0 \
-    --hash=sha256:545f21ecf1a3c799b366b4c4a87721dc875315d362e9e3809ad967626013fc04 \
-    --hash=sha256:ef351833b776e7f1579e586c22471ba41eee8dd0c1b2c99259890d025c5a3ad5
+pipewire-filtertools==0.3.0 \
+    --hash=sha256:152fa7a2f0ccc50777150f90a4fd21b945c12a91216568729053acd7ad80fa65 \
+    --hash=sha256:27cecaba3c6dd52e0d55062654bd4325d8c5b47ce6a2bb3b655a7d13f9bd27d1
     # via -r requirements-3.12.3.txt
 platformdirs==4.5.0 \
     --hash=sha256:70ddccdd7c99fc5942e9fc25636a8b34d04c24b335100223152c2803e4063312 \
