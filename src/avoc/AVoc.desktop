@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=AVoc
-Exec=bash -c 'source .venv/bin/activate && avoc'
+Exec=bash -c 'source .venv/bin/activate && nice -n -1 avoc'
 Icon=AVoc
 Type=Application
 Categories=AudioVideo;Audio;
