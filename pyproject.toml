@@ -9,7 +9,7 @@ readme = "README.md"
 dependencies = [
   "pipewire-filtertools>=0.2.0; sys_platform=='linux'",
   "PySide6",
-  "PySide6-GlobalHotkeys",
+  "PySide6-GlobalHotkeys>=0.0.5",
   "voiceconversion>=0.0.8",
 ]
 classifiers = [

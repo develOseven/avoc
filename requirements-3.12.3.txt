@@ -66,7 +66,7 @@ pydantic-settings==2.11.0
 pydantic_core==2.41.4
 Pygments==2.19.2
 PySide6==6.10.0
-PySide6-GlobalHotkeys==0.0.3
+PySide6-GlobalHotkeys==0.0.5
 PySide6_Addons==6.10.0
 PySide6_Essentials==6.10.0
 python-dotenv==1.2.1

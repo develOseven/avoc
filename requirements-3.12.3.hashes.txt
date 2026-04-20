@@ -1616,9 +1616,9 @@ pyside6-essentials==6.10.0 \
     #   -r requirements-3.12.3.txt
     #   pyside6
     #   pyside6-addons
-pyside6-globalhotkeys==0.0.3 \
-    --hash=sha256:1818096c17cbd9ef85a93483ccabc361b52c3577344fed492f7b9f52205d123d \
-    --hash=sha256:1b099c2feb9a21a368bd57b3b73427c4174ca14f482ce26cd9344bf7fc3a1d2f
+pyside6-globalhotkeys==0.0.5 \
+    --hash=sha256:6e82e76a02f72f9f03d86e2be134bea1bffc8148873a83e6d5f3164dad1c941b \
+    --hash=sha256:ac63940c97e2c179cdd25b1d6dd2a38ba792c95b1bcd23d5f883ce0e5dbdcf63
     # via -r requirements-3.12.3.txt
 python-dotenv==1.2.1 \
     --hash=sha256:42667e897e16ab0d66954af0e60a9caa94f0fd4ecf3aaf6d2d260eec1aa36ad6 \
